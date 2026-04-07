@@ -1,98 +1,194 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 小慕天气后端项目
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+## 项目简介
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+`weather-backend` 是“小慕天气”系统的后端服务，基于 `NestJS`、`TypeScript`、`Prisma` 和 `MySQL` 构建。项目主要负责用户注册登录、个人信息维护、登录记录持久化、城市与天气相关接口支撑等服务能力，并为前端项目 `weather-frontend` 提供统一的接口支持。
 
-## Description
+## 技术栈
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- `NestJS`：后端应用框架
+- `TypeScript`：类型系统支持
+- `Prisma`：ORM 与数据库访问层
+- `MySQL`：业务数据持久化存储
+- `class-validator`：请求参数校验
+- `class-transformer`：请求参数转换
+- `Jest`：单元测试框架
 
-## Project setup
+## 项目功能
 
-```bash
-$ npm install
+- 用户注册
+- 用户登录
+- 登录状态校验
+- 个人资料查询与修改
+- 用户头像上传
+- 登录记录写入与查询
+- 城市数据查询接口
+
+## 项目目录结构
+
+```text
+weather-backend/
+├─ prisma/                         Prisma 配置、数据模型与迁移文件
+│  ├─ migrations/                  数据库迁移记录
+│  └─ schema.prisma               Prisma 数据模型定义
+├─ src/
+│  ├─ auth/                       认证、注册、登录、个人信息、登录记录模块
+│  ├─ cities/                     城市相关接口模块
+│  ├─ prisma/                     Prisma 服务封装
+│  ├─ app.module.ts               应用主模块
+│  └─ main.ts                     应用启动入口
+├─ uploads/                       上传文件目录
+├─ package.json                   项目脚本与依赖配置
+├─ .env.example                   环境变量示例
+└─ README.md                      项目说明文档
 ```
 
-## Compile and run the project
+## 环境要求
 
-```bash
-# development
-$ npm run start
+- `Node.js`：建议 `>= 20`
+- `npm`：建议使用与 Node 匹配的较新版本
+- `MySQL`：建议 `8.x`
 
-# watch mode
-$ npm run start:dev
+## 环境变量配置
 
-# production mode
-$ npm run start:prod
+项目启动前，请先在项目根目录创建 `.env` 文件，可参考 `.env.example`：
+
+```env
+DATABASE_URL="mysql://root:password@localhost:3306/weather_backend"
+PORT=3000
 ```
 
-## Run tests
+说明：
+
+- `DATABASE_URL`：MySQL 数据库连接地址
+- `PORT`：后端服务启动端口，默认 `3000`
+
+## 项目启动方式
+
+### 1. 安装依赖
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 2. 生成 Prisma Client
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run prisma:generate
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 3. 执行数据库迁移
 
-## Resources
+```bash
+npm run prisma:migrate
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+如果数据库中还没有对应表结构，需要先执行这一步。
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### 4. 启动开发环境
 
-## Support
+```bash
+npm run start:dev
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### 5. 启动普通运行模式
 
-## Stay in touch
+```bash
+npm run start
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### 6. 启动生产模式
 
-## License
+```bash
+npm run start:prod
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+## 项目测试命令
+
+### 1. 单元测试
+
+```bash
+npm run test
+```
+
+### 2. 监听模式测试
+
+```bash
+npm run test:watch
+```
+
+### 3. 覆盖率测试
+
+```bash
+npm run test:cov
+```
+
+### 4. 调试模式测试
+
+```bash
+npm run test:debug
+```
+
+### 5. 端到端测试
+
+```bash
+npm run test:e2e
+```
+
+## 常用开发命令
+
+### 构建项目
+
+```bash
+npm run build
+```
+
+### 格式化代码
+
+```bash
+npm run format
+```
+
+## 数据库相关命令
+
+### 生成 Prisma Client
+
+```bash
+npm run prisma:generate
+```
+
+### 执行 Prisma 迁移
+
+```bash
+npm run prisma:migrate
+```
+
+## 前后端联调说明
+
+- 默认后端服务运行在 `http://localhost:3000`
+- 前端通过 `/api` 前缀代理访问后端接口
+- 登录、注册、个人信息、登录记录等接口都依赖数据库连接正常
+- 若登录时报数据库相关错误，请优先检查：
+  - `.env` 中的 `DATABASE_URL`
+  - MySQL 服务是否已启动
+  - Prisma Client 是否已生成
+  - 数据库迁移是否已执行
+
+## 主要接口能力说明
+
+- `POST /auth/register`：用户注册
+- `POST /auth/login`：用户登录
+- `GET /auth/profile`：获取个人信息
+- `PUT /auth/profile`：更新个人信息
+- `POST /auth/avatar`：上传头像
+- `GET /auth/login-records`：获取当前用户登录记录
+
+## 说明
+
+当前项目用于“小慕天气”毕业设计/课程设计场景，已接入 `MySQL + Prisma` 实现用户与登录记录的持久化。后续如果需要继续扩展，可考虑补充：
+
+- JWT 鉴权
+- 刷新 token
+- 更完善的异常日志记录
+- 数据库种子脚本
+- 更完整的 Swagger 接口文档

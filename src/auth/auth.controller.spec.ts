@@ -4,77 +4,136 @@ import { AuthService } from './auth.service';
 
 describe('AuthController', () => {
   let controller: AuthController;
-  let service: AuthService;
+  let service: jest.Mocked<AuthService>;
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [AuthService],
+      providers: [
+        {
+          provide: AuthService,
+          useValue: {
+            register: jest.fn(),
+            login: jest.fn(),
+            getProfile: jest.fn(),
+            getLoginRecords: jest.fn(),
+            updateProfile: jest.fn(),
+            updateAvatar: jest.fn(),
+          },
+        },
+      ],
     }).compile();
 
     controller = moduleRef.get<AuthController>(AuthController);
-    service = moduleRef.get<AuthService>(AuthService);
+    service = moduleRef.get(AuthService);
   });
 
-  it('should call register and return success payload', () => {
-    const spy = jest.spyOn(service, 'register');
+  it('should call register and return success payload', async () => {
     const payload = {
       email: 'controller-register@weather.com',
       password: '123456',
       nickname: '控制器注册',
     };
+    service.register.mockResolvedValue({
+      code: 0,
+      message: '注册成功',
+      data: { userId: 'user-1', email: payload.email, nickname: payload.nickname },
+    });
 
-    const result = controller.register(payload);
+    const result = await controller.register(payload);
 
-    expect(spy).toHaveBeenCalledWith(payload);
+    expect(service.register).toHaveBeenCalledWith(payload);
     expect(result.code).toBe(0);
-    expect(result.message).toBe('注册成功');
   });
 
-  it('should call login and return success payload', () => {
-    service.register({
-      email: 'controller-login@weather.com',
-      password: '123456',
-      nickname: '控制器登录',
-    });
-    const spy = jest.spyOn(service, 'login');
+  it('should call login and return success payload', async () => {
     const payload = { email: 'controller-login@weather.com', password: '123456' };
+    const request = {
+      headers: {},
+      get: jest.fn().mockReturnValue('Mozilla/5.0 Chrome/135.0.0.0'),
+      ip: '127.0.0.1',
+      socket: { remoteAddress: '127.0.0.1' },
+    } as any;
+    service.login.mockResolvedValue({
+      code: 0,
+      message: '登录成功',
+      data: {
+        token: 'mock-token-user-1',
+        user: { userId: 'user-1', email: payload.email, nickname: '控制器登录' },
+      },
+    });
 
-    const result = controller.login(payload);
+    const result = await controller.login(payload, request);
 
-    expect(spy).toHaveBeenCalledWith(payload);
+    expect(service.login).toHaveBeenCalledWith(payload, {
+      ipAddress: '127.0.0.1',
+      userAgent: 'Mozilla/5.0 Chrome/135.0.0.0',
+    });
     expect(result.code).toBe(0);
-    expect(result.message).toBe('登录成功');
   });
 
-  it('should call getProfile and return profile payload', () => {
-    const loginResult = service.login({
-      email: 'demo@weather.com',
-      password: '123456',
+  it('should call getProfile and return profile payload', async () => {
+    service.getProfile.mockResolvedValue({
+      code: 0,
+      message: '获取成功',
+      data: {
+        userId: 'user-1',
+        email: 'demo@weather.com',
+        nickname: '演示账号',
+        phone: '',
+        qq: '',
+        wechat: '',
+        avatarUrl: '',
+      },
     });
-    const tokenHeader = `Bearer ${loginResult.data.token}`;
-    const spy = jest.spyOn(service, 'getProfile');
 
-    const result = controller.getProfile(tokenHeader);
+    const result = await controller.getProfile('Bearer mock-token-user-1');
 
-    expect(spy).toHaveBeenCalledWith(tokenHeader);
+    expect(service.getProfile).toHaveBeenCalledWith('Bearer mock-token-user-1');
     expect(result.code).toBe(0);
-    expect(result.message).toBe('获取成功');
   });
 
-  it('should call updateProfile and return updated payload', () => {
-    const loginResult = service.login({
-      email: 'demo@weather.com',
-      password: '123456',
-    });
-    const tokenHeader = `Bearer ${loginResult.data.token}`;
+  it('should call updateProfile and return updated payload', async () => {
     const payload = { nickname: '控制器新昵称', phone: '13800138000' };
-    const spy = jest.spyOn(service, 'updateProfile');
+    service.updateProfile.mockResolvedValue({
+      code: 0,
+      message: '保存成功',
+      data: {
+        userId: 'user-1',
+        email: 'demo@weather.com',
+        nickname: '控制器新昵称',
+        phone: '13800138000',
+        qq: '',
+        wechat: '',
+        avatarUrl: '',
+      },
+    });
 
-    const result = controller.updateProfile(tokenHeader, payload);
+    const result = await controller.updateProfile('Bearer mock-token-user-1', payload);
 
-    expect(spy).toHaveBeenCalledWith(tokenHeader, payload);
+    expect(service.updateProfile).toHaveBeenCalledWith('Bearer mock-token-user-1', payload);
     expect(result.code).toBe(0);
-    expect(result.message).toBe('保存成功');
+  });
+
+  it('should call getLoginRecords and return records payload', async () => {
+    service.getLoginRecords.mockResolvedValue({
+      code: 0,
+      message: '获取成功',
+      data: [
+        {
+          recordId: 'record-1',
+          account: 'demo@weather.com',
+          loginTime: '2026-04-07T10:00:00.000Z',
+          loginAddress: '本地网络 / 开发环境',
+          loginDevice: 'Chrome/135.0.0.0 / Windows NT 10.0',
+        },
+      ],
+    });
+
+    const result = await controller.getLoginRecords('Bearer mock-token-user-1');
+
+    expect(service.getLoginRecords).toHaveBeenCalledWith('Bearer mock-token-user-1');
+    expect(result.code).toBe(0);
+    expect(Array.isArray(result.data)).toBe(true);
   });
 });

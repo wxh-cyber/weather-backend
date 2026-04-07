@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  userId         String        @id @default(cuid())
+  email          String        @unique
+  passwordHash   String
+  nickname       String?
+  phone          String        @default("")
+  qq             String        @default("")
+  wechat         String        @default("")
+  avatarUrl      String        @default("")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  loginRecords   LoginRecord[]
+}
+
+model LoginRecord {
+  recordId       String   @id @default(cuid())
+  account        String
+  loginTime      DateTime @default(now())
+  loginAddress   String
+  loginDevice    String
+  userId         String
+  user           User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, loginTime(sort: Desc)])
+}
