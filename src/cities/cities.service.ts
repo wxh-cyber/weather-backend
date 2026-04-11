@@ -1,4 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import Mock from 'mockjs';
 
 export interface CityWeatherItem {
@@ -9,7 +14,7 @@ export interface CityWeatherItem {
 
 @Injectable()
 export class CitiesService {
-  private readonly allCities: CityWeatherItem[];
+  private allCities: CityWeatherItem[];
 
   constructor() {
     this.allCities = this.buildMockCities();
@@ -27,6 +32,61 @@ export class CitiesService {
       code: 0,
       message: '获取成功',
       data: data.map((item) => ({ ...item })),
+    };
+  }
+
+  createCity(cityName: string) {
+    const normalizedName = this.normalizeAndValidateCityName(cityName);
+    if (this.findCityIndex(normalizedName) >= 0) {
+      throw new ConflictException('城市已存在，请勿重复添加');
+    }
+
+    this.allCities.push(this.buildCityItem(normalizedName));
+    return {
+      code: 0,
+      message: '新增成功',
+      data: this.allCities.map((item) => ({ ...item })),
+    };
+  }
+
+  renameCity(oldCityName: string, newCityName: string) {
+    const normalizedOldName = this.normalizeAndValidateCityName(oldCityName);
+    const normalizedNewName = this.normalizeAndValidateCityName(newCityName);
+    const sourceIndex = this.findCityIndex(normalizedOldName);
+
+    if (sourceIndex < 0) {
+      throw new NotFoundException('未找到待修改的城市');
+    }
+
+    const targetIndex = this.findCityIndex(normalizedNewName);
+    if (targetIndex >= 0 && targetIndex !== sourceIndex) {
+      throw new ConflictException('目标城市名称已存在');
+    }
+
+    this.allCities[sourceIndex] = {
+      ...this.allCities[sourceIndex],
+      cityName: normalizedNewName,
+    };
+
+    return {
+      code: 0,
+      message: '修改成功',
+      data: this.allCities.map((item) => ({ ...item })),
+    };
+  }
+
+  deleteCity(cityName: string) {
+    const normalizedName = this.normalizeAndValidateCityName(cityName);
+    const index = this.findCityIndex(normalizedName);
+    if (index < 0) {
+      throw new NotFoundException('未找到待删除的城市');
+    }
+
+    this.allCities.splice(index, 1);
+    return {
+      code: 0,
+      message: '删除成功',
+      data: this.allCities.map((item) => ({ ...item })),
     };
   }
 
@@ -68,21 +128,50 @@ export class CitiesService {
       '澳门特别行政区',
       '台北市',
     ];
-    const Random = Mock.Random;
-
-    return cityNames.map((cityName) => {
-      const weatherText = Random.pick(weatherPool);
-      const degree = Random.integer(-5, 38);
-      const temperature = `${degree}°C`;
-      return {
-        cityName,
-        weatherText,
-        temperature,
-      };
-    });
+    return cityNames.map((cityName) =>
+      this.buildCityItem(cityName, weatherPool),
+    );
   }
 
   private normalizeKeyword(keyword?: string) {
     return (keyword ?? '').trim().toLocaleLowerCase();
+  }
+
+  private normalizeAndValidateCityName(cityName: string) {
+    const normalizedName = cityName.trim();
+    if (!normalizedName) {
+      throw new BadRequestException('城市名称不能为空');
+    }
+    return normalizedName;
+  }
+
+  private findCityIndex(cityName: string) {
+    const normalizedKeyword = this.normalizeKeyword(cityName);
+    return this.allCities.findIndex(
+      (item) => this.normalizeKeyword(item.cityName) === normalizedKeyword,
+    );
+  }
+
+  private buildCityItem(
+    cityName: string,
+    weatherPool?: string[],
+  ): CityWeatherItem {
+    const Random = Mock.Random;
+    const weatherOptions = weatherPool ?? [
+      '晴',
+      '多云',
+      '阴',
+      '小雨',
+      '中雨',
+      '雷阵雨',
+      '小雪',
+    ];
+    const weatherText = Random.pick(weatherOptions);
+    const degree = Random.integer(-5, 38);
+    return {
+      cityName,
+      weatherText,
+      temperature: `${degree}°C`,
+    };
   }
 }

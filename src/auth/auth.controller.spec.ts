@@ -37,7 +37,11 @@ describe('AuthController', () => {
     service.register.mockResolvedValue({
       code: 0,
       message: '注册成功',
-      data: { userId: 'user-1', email: payload.email, nickname: payload.nickname },
+      data: {
+        userId: 'user-1',
+        email: payload.email,
+        nickname: payload.nickname,
+      },
     });
 
     const result = await controller.register(payload);
@@ -47,7 +51,10 @@ describe('AuthController', () => {
   });
 
   it('should call login and return success payload', async () => {
-    const payload = { email: 'controller-login@weather.com', password: '123456' };
+    const payload = {
+      email: 'controller-login@weather.com',
+      password: '123456',
+    };
     const request = {
       headers: {},
       get: jest.fn().mockReturnValue('Mozilla/5.0 Chrome/135.0.0.0'),
@@ -59,7 +66,11 @@ describe('AuthController', () => {
       message: '登录成功',
       data: {
         token: 'mock-token-user-1',
-        user: { userId: 'user-1', email: payload.email, nickname: '控制器登录' },
+        user: {
+          userId: 'user-1',
+          email: payload.email,
+          nickname: '控制器登录',
+        },
       },
     });
 
@@ -109,9 +120,15 @@ describe('AuthController', () => {
       },
     });
 
-    const result = await controller.updateProfile('Bearer mock-token-user-1', payload);
+    const result = await controller.updateProfile(
+      'Bearer mock-token-user-1',
+      payload,
+    );
 
-    expect(service.updateProfile).toHaveBeenCalledWith('Bearer mock-token-user-1', payload);
+    expect(service.updateProfile).toHaveBeenCalledWith(
+      'Bearer mock-token-user-1',
+      payload,
+    );
     expect(result.code).toBe(0);
   });
 
@@ -132,7 +149,9 @@ describe('AuthController', () => {
 
     const result = await controller.getLoginRecords('Bearer mock-token-user-1');
 
-    expect(service.getLoginRecords).toHaveBeenCalledWith('Bearer mock-token-user-1');
+    expect(service.getLoginRecords).toHaveBeenCalledWith(
+      'Bearer mock-token-user-1',
+    );
     expect(result.code).toBe(0);
     expect(Array.isArray(result.data)).toBe(true);
   });

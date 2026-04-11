@@ -132,11 +132,15 @@ export class AuthService implements OnModuleInit {
       const updatedUser = await this.prisma.user.update({
         where: { userId: user.userId },
         data: {
-          ...(dto.nickname !== undefined ? { nickname: dto.nickname.trim() || null } : {}),
+          ...(dto.nickname !== undefined
+            ? { nickname: dto.nickname.trim() || null }
+            : {}),
           ...(dto.phone !== undefined ? { phone: dto.phone.trim() } : {}),
           ...(dto.qq !== undefined ? { qq: dto.qq.trim() } : {}),
           ...(dto.wechat !== undefined ? { wechat: dto.wechat.trim() } : {}),
-          ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl.trim() } : {}),
+          ...(dto.avatarUrl !== undefined
+            ? { avatarUrl: dto.avatarUrl.trim() }
+            : {}),
         },
       });
 
@@ -256,7 +260,12 @@ export class AuthService implements OnModuleInit {
   }
 
   private resolveLoginAddress(ipAddress?: string) {
-    if (!ipAddress || ipAddress === '::1' || ipAddress === '127.0.0.1' || ipAddress === '::ffff:127.0.0.1') {
+    if (
+      !ipAddress ||
+      ipAddress === '::1' ||
+      ipAddress === '127.0.0.1' ||
+      ipAddress === '::ffff:127.0.0.1'
+    ) {
       return '本地网络 / 开发环境';
     }
     return `网络节点 ${ipAddress}`;
@@ -268,10 +277,13 @@ export class AuthService implements OnModuleInit {
     }
 
     const browser =
-      userAgent.match(/(Chrome|Firefox|Safari|Edg|Opera)\/[\d.]+/i)?.[0]?.replace('Edg', 'Edge') || '未知浏览器';
+      userAgent
+        .match(/(Chrome|Firefox|Safari|Edg|Opera)\/[\d.]+/i)?.[0]
+        ?.replace('Edg', 'Edge') || '未知浏览器';
     const os =
-      userAgent.match(/(Windows NT [\d.]+|Mac OS X [\d_]+|Android [\d.]+|iPhone OS [\d_]+|Linux)/i)?.[0] ||
-      '未知系统';
+      userAgent.match(
+        /(Windows NT [\d.]+|Mac OS X [\d_]+|Android [\d.]+|iPhone OS [\d_]+|Linux)/i,
+      )?.[0] || '未知系统';
 
     return `${browser} / ${os}`.trim();
   }
@@ -293,7 +305,9 @@ export class AuthService implements OnModuleInit {
       error instanceof Prisma.PrismaClientRustPanicError ||
       error instanceof Prisma.PrismaClientValidationError
     ) {
-      throw new InternalServerErrorException('数据库连接异常，请检查后端服务或数据库配置');
+      throw new InternalServerErrorException(
+        '数据库连接异常，请检查后端服务或数据库配置',
+      );
     }
 
     throw new InternalServerErrorException('服务异常，请稍后重试');

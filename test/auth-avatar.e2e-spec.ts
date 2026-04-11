@@ -19,10 +19,12 @@ describe('AuthAvatar (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    const loginRes = await request(app.getHttpServer()).post('/auth/login').send({
-      email: 'demo@weather.com',
-      password: '123456',
-    });
+    const loginRes = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'demo@weather.com',
+        password: '123456',
+      });
     token = loginRes.body?.data?.token || '';
   });
 
@@ -33,8 +35,8 @@ describe('AuthAvatar (e2e)', () => {
 
   it('should upload avatar successfully', async () => {
     const pngBuffer = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
     ]);
 
     const res = await request(app.getHttpServer())
@@ -66,8 +68,8 @@ describe('AuthAvatar (e2e)', () => {
 
   it('should return unauthorized when token is missing', async () => {
     const pngBuffer = Buffer.from([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-      0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
     ]);
     const res = await request(app.getHttpServer())
       .post('/auth/avatar')

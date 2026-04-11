@@ -20,7 +20,8 @@ const createPrismaMock = () => ({
   },
 });
 
-const hashPassword = (password: string) => createHash('sha256').update(password).digest('hex');
+const hashPassword = (password: string) =>
+  createHash('sha256').update(password).digest('hex');
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -210,7 +211,9 @@ describe('AuthService', () => {
 
     expect(avatarRes.code).toBe(0);
     expect(avatarRes.message).toBe('头像上传成功');
-    expect(avatarRes.data.avatarUrl).toBe('http://localhost:3000/uploads/avatars/demo.png');
+    expect(avatarRes.data.avatarUrl).toBe(
+      'http://localhost:3000/uploads/avatars/demo.png',
+    );
   });
 
   it('should return login records in descending order', async () => {
@@ -235,7 +238,9 @@ describe('AuthService', () => {
       },
     ]);
 
-    const recordsRes = await service.getLoginRecords('Bearer mock-token-user-1');
+    const recordsRes = await service.getLoginRecords(
+      'Bearer mock-token-user-1',
+    );
 
     expect(recordsRes.code).toBe(0);
     expect(recordsRes.message).toBe('获取成功');
@@ -243,11 +248,15 @@ describe('AuthService', () => {
   });
 
   it('should throw unauthorized when token is missing', async () => {
-    await expect(service.getProfile(undefined)).rejects.toThrow(UnauthorizedException);
+    await expect(service.getProfile(undefined)).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('should throw unauthorized when login records token is invalid', async () => {
-    await expect(service.getLoginRecords('Bearer invalid-token')).rejects.toThrow(UnauthorizedException);
+    await expect(
+      service.getLoginRecords('Bearer invalid-token'),
+    ).rejects.toThrow(UnauthorizedException);
   });
 
   it('should throw readable database error when prisma query fails during login', async () => {
@@ -260,6 +269,10 @@ describe('AuthService', () => {
         email: 'demo@weather.com',
         password: '123456',
       }),
-    ).rejects.toThrow(new InternalServerErrorException('数据库连接异常，请检查后端服务或数据库配置'));
+    ).rejects.toThrow(
+      new InternalServerErrorException(
+        '数据库连接异常，请检查后端服务或数据库配置',
+      ),
+    );
   });
 });

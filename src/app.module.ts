@@ -7,7 +7,12 @@ import { CitiesModule } from './cities/cities.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), PrismaModule, AuthModule, CitiesModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    AuthModule,
+    CitiesModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

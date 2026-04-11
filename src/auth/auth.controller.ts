@@ -86,7 +86,10 @@ export class AuthController {
           callback(null, true);
           return;
         }
-        callback(new BadRequestException('仅支持 jpg/png/webp 格式图片'), false);
+        callback(
+          new BadRequestException('仅支持 jpg/png/webp 格式图片'),
+          false,
+        );
       },
     }),
   )
