@@ -4,7 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import Mock from 'mockjs';
 
 export interface CityWeatherItem {
   cityName: string;
@@ -156,7 +155,6 @@ export class CitiesService {
     cityName: string,
     weatherPool?: string[],
   ): CityWeatherItem {
-    const Random = Mock.Random;
     const weatherOptions = weatherPool ?? [
       '晴',
       '多云',
@@ -166,12 +164,17 @@ export class CitiesService {
       '雷阵雨',
       '小雪',
     ];
-    const weatherText = Random.pick(weatherOptions);
-    const degree = Random.integer(-5, 38);
+    const weatherText =
+      weatherOptions[Math.floor(Math.random() * weatherOptions.length)];
+    const degree = this.randomInteger(-5, 38);
     return {
       cityName,
       weatherText,
       temperature: `${degree}°C`,
     };
+  }
+
+  private randomInteger(min: number, max: number): number {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 }
