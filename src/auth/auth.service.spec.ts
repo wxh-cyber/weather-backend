@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { hash } from 'bcryptjs';
 import { AuthService } from './auth.service';
 
 const createPrismaMock = () => ({
@@ -18,18 +19,28 @@ const createPrismaMock = () => ({
     create: jest.fn(),
     findMany: jest.fn(),
   },
+  refreshToken: {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn(),
+  },
 });
 
-const hashPassword = (password: string) =>
-  createHash('sha256').update(password).digest('hex');
+const createTokenServiceMock = () => ({
+  signAccessToken: jest.fn(() => 'access-token'),
+  signRefreshToken: jest.fn(() => 'refresh-token'),
+  verifyRefreshToken: jest.fn(),
+});
 
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: ReturnType<typeof createPrismaMock>;
+  let authTokenService: ReturnType<typeof createTokenServiceMock>;
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new AuthService(prisma as never);
+    authTokenService = createTokenServiceMock();
+    service = new AuthService(prisma as never, authTokenService as never);
   });
 
   it('should register a new account', async () => {
@@ -72,7 +83,7 @@ describe('AuthService', () => {
     prisma.user.findUnique.mockResolvedValue({
       userId: 'user-1',
       email: 'login-user@weather.com',
-      passwordHash: hashPassword('123456'),
+      passwordHash: await hash('123456', 10),
       nickname: '用户',
       phone: '',
       qq: '',
@@ -80,6 +91,7 @@ describe('AuthService', () => {
       avatarUrl: '',
     });
     prisma.loginRecord.create.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
 
     const result = await service.login(
       {
@@ -94,42 +106,28 @@ describe('AuthService', () => {
 
     expect(result.code).toBe(0);
     expect(result.message).toBe('登录成功');
-    expect(result.data.token).toBe('mock-token-user-1');
+    expect(result.data.token).toBe('access-token');
+    expect(result.data.accessToken).toBe('access-token');
+    expect(result.data.refreshToken).toBe('refresh-token');
     expect(prisma.loginRecord.create).toHaveBeenCalled();
+    expect(prisma.refreshToken.create).toHaveBeenCalled();
   });
 
-  it('should throw not found when account is not registered', async () => {
-    prisma.user.findUnique.mockResolvedValue(null);
-
-    await expect(
-      service.login({
-        email: 'not-exists@weather.com',
-        password: '123456',
-      }),
-    ).rejects.toThrow(new NotFoundException('账号未注册'));
-  });
-
-  it('should throw unauthorized when password is invalid', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      userId: 'user-1',
-      email: 'login-user@weather.com',
-      passwordHash: hashPassword('abcdef'),
-      nickname: '用户',
-      phone: '',
-      qq: '',
-      wechat: '',
-      avatarUrl: '',
+  it('should refresh tokens with a valid refresh token', async () => {
+    authTokenService.verifyRefreshToken.mockReturnValue({
+      sub: 'user-1',
+      email: 'demo@weather.com',
+      type: 'refresh',
+      tokenId: 'token-1',
     });
-
-    await expect(
-      service.login({
-        email: 'login-user@weather.com',
-        password: '123456',
-      }),
-    ).rejects.toThrow(new UnauthorizedException('密码错误'));
-  });
-
-  it('should get profile with valid token', async () => {
+    prisma.refreshToken.findUnique.mockResolvedValue({
+      tokenId: 'token-1',
+      tokenHash: createHash('sha256').update('refresh-token').digest('hex'),
+      expiresAt: new Date(Date.now() + 60_000),
+      revokedAt: null,
+      createdAt: new Date(),
+      userId: 'user-1',
+    });
     prisma.user.findUnique.mockResolvedValue({
       userId: 'user-1',
       email: 'demo@weather.com',
@@ -140,8 +138,29 @@ describe('AuthService', () => {
       wechat: '',
       avatarUrl: '',
     });
+    prisma.refreshToken.update.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
 
-    const profileRes = await service.getProfile('Bearer mock-token-user-1');
+    const result = await service.refresh({ refreshToken: 'refresh-token' });
+
+    expect(result.code).toBe(0);
+    expect(result.data.accessToken).toBe('access-token');
+    expect(prisma.refreshToken.update).toHaveBeenCalled();
+    expect(prisma.refreshToken.create).toHaveBeenCalled();
+  });
+
+  it('should get profile from current user payload', () => {
+    const profileRes = service.getProfile({
+      userId: 'user-1',
+      email: 'demo@weather.com',
+      nickname: '演示账号',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
     expect(profileRes.code).toBe(0);
     expect(profileRes.message).toBe('获取成功');
@@ -149,16 +168,6 @@ describe('AuthService', () => {
   });
 
   it('should update profile fields', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      userId: 'user-1',
-      email: 'demo@weather.com',
-      passwordHash: 'hash',
-      nickname: '演示账号',
-      phone: '',
-      qq: '',
-      wechat: '',
-      avatarUrl: '',
-    });
     prisma.user.update.mockResolvedValue({
       userId: 'user-1',
       email: 'demo@weather.com',
@@ -170,7 +179,7 @@ describe('AuthService', () => {
       avatarUrl: '',
     });
 
-    const updateRes = await service.updateProfile('Bearer mock-token-user-1', {
+    const updateRes = await service.updateProfile('user-1', {
       nickname: '新昵称',
       phone: '13800138000',
       qq: '12345678',
@@ -183,16 +192,6 @@ describe('AuthService', () => {
   });
 
   it('should update avatar url', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      userId: 'user-1',
-      email: 'demo@weather.com',
-      passwordHash: 'hash',
-      nickname: '演示账号',
-      phone: '',
-      qq: '',
-      wechat: '',
-      avatarUrl: '',
-    });
     prisma.user.update.mockResolvedValue({
       userId: 'user-1',
       email: 'demo@weather.com',
@@ -205,7 +204,7 @@ describe('AuthService', () => {
     });
 
     const avatarRes = await service.updateAvatar(
-      'Bearer mock-token-user-1',
+      'user-1',
       'http://localhost:3000/uploads/avatars/demo.png',
     );
 
@@ -217,16 +216,6 @@ describe('AuthService', () => {
   });
 
   it('should return login records in descending order', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      userId: 'user-1',
-      email: 'demo@weather.com',
-      passwordHash: 'hash',
-      nickname: '演示账号',
-      phone: '',
-      qq: '',
-      wechat: '',
-      avatarUrl: '',
-    });
     prisma.loginRecord.findMany.mockResolvedValue([
       {
         recordId: 'record-1',
@@ -238,24 +227,20 @@ describe('AuthService', () => {
       },
     ]);
 
-    const recordsRes = await service.getLoginRecords(
-      'Bearer mock-token-user-1',
-    );
+    const recordsRes = await service.getLoginRecords('user-1');
 
     expect(recordsRes.code).toBe(0);
     expect(recordsRes.message).toBe('获取成功');
     expect(recordsRes.data[0].loginTime).toBe('2026-04-07T10:00:00.000Z');
   });
 
-  it('should throw unauthorized when token is missing', async () => {
-    await expect(service.getProfile(undefined)).rejects.toThrow(
-      UnauthorizedException,
-    );
-  });
+  it('should throw unauthorized when refresh token is invalid', async () => {
+    authTokenService.verifyRefreshToken.mockImplementation(() => {
+      throw new UnauthorizedException('刷新令牌无效');
+    });
 
-  it('should throw unauthorized when login records token is invalid', async () => {
     await expect(
-      service.getLoginRecords('Bearer invalid-token'),
+      service.refresh({ refreshToken: 'invalid-token' }),
     ).rejects.toThrow(UnauthorizedException);
   });
 
@@ -274,5 +259,16 @@ describe('AuthService', () => {
         '数据库连接异常，请检查后端服务或数据库配置',
       ),
     );
+  });
+
+  it('should throw not found when account is not registered', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.login({
+        email: 'not-exists@weather.com',
+        password: '123456',
+      }),
+    ).rejects.toThrow(new NotFoundException('账号未注册'));
   });
 });

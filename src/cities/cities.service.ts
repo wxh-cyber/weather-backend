@@ -3,137 +3,134 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
-
-export interface CityWeatherItem {
-  cityName: string;
-  weatherText: string;
-  temperature: string;
-}
+import type { City } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { WeatherProvider } from '../weather/weather.provider';
+import { WeatherService } from '../weather/weather.service';
+import { CITY_SEED_DATA } from './city-seed';
 
 @Injectable()
-export class CitiesService {
-  private allCities: CityWeatherItem[];
+export class CitiesService implements OnModuleInit {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly weatherService: WeatherService,
+    private readonly weatherProvider: WeatherProvider,
+  ) {}
 
-  constructor() {
-    this.allCities = this.buildMockCities();
+  async onModuleInit() {
+    await this.seedCities();
   }
 
-  getCities(keyword?: string) {
+  async getCities(keyword?: string) {
     const normalizedKeyword = this.normalizeKeyword(keyword);
-    const data = normalizedKeyword
-      ? this.allCities.filter((item) =>
-          this.normalizeKeyword(item.cityName).includes(normalizedKeyword),
-        )
-      : this.allCities;
+    const cities = await this.prisma.city.findMany({
+      where: normalizedKeyword
+        ? {
+            cityName: {
+              contains: normalizedKeyword,
+            },
+          }
+        : undefined,
+      orderBy: [{ province: 'asc' }, { cityName: 'asc' }],
+      take: normalizedKeyword ? 50 : 100,
+    });
+
+    const data = await Promise.all(
+      cities.map((city) => this.toCityListItem(city)),
+    );
 
     return {
       code: 0,
       message: '获取成功',
-      data: data.map((item) => ({ ...item })),
+      data,
     };
   }
 
-  createCity(cityName: string) {
+  async createCity(cityName: string) {
     const normalizedName = this.normalizeAndValidateCityName(cityName);
-    if (this.findCityIndex(normalizedName) >= 0) {
+    const existing = await this.prisma.city.findUnique({
+      where: { cityName: normalizedName },
+    });
+    if (existing) {
       throw new ConflictException('城市已存在，请勿重复添加');
     }
 
-    this.allCities.push(this.buildCityItem(normalizedName));
-    return {
-      code: 0,
-      message: '新增成功',
-      data: this.allCities.map((item) => ({ ...item })),
-    };
+    const resolved =
+      await this.weatherProvider.resolveCityByName(normalizedName);
+    await this.prisma.city.create({
+      data: {
+        cityName: normalizedName,
+        province: resolved?.province ?? '',
+        country: resolved?.country ?? '中国',
+        latitude: resolved?.latitude ?? null,
+        longitude: resolved?.longitude ?? null,
+      },
+    });
+
+    return this.getCities();
   }
 
-  renameCity(oldCityName: string, newCityName: string) {
+  async renameCity(oldCityName: string, newCityName: string) {
     const normalizedOldName = this.normalizeAndValidateCityName(oldCityName);
     const normalizedNewName = this.normalizeAndValidateCityName(newCityName);
-    const sourceIndex = this.findCityIndex(normalizedOldName);
 
-    if (sourceIndex < 0) {
+    const source = await this.prisma.city.findUnique({
+      where: { cityName: normalizedOldName },
+    });
+    if (!source) {
       throw new NotFoundException('未找到待修改的城市');
     }
 
-    const targetIndex = this.findCityIndex(normalizedNewName);
-    if (targetIndex >= 0 && targetIndex !== sourceIndex) {
+    const duplicate = await this.prisma.city.findUnique({
+      where: { cityName: normalizedNewName },
+    });
+    if (duplicate && duplicate.cityId !== source.cityId) {
       throw new ConflictException('目标城市名称已存在');
     }
 
-    this.allCities[sourceIndex] = {
-      ...this.allCities[sourceIndex],
-      cityName: normalizedNewName,
-    };
+    const resolved =
+      await this.weatherProvider.resolveCityByName(normalizedNewName);
+    await this.prisma.city.update({
+      where: { cityId: source.cityId },
+      data: {
+        cityName: normalizedNewName,
+        province: resolved?.province ?? source.province,
+        country: resolved?.country ?? source.country,
+        latitude: resolved?.latitude ?? source.latitude,
+        longitude: resolved?.longitude ?? source.longitude,
+      },
+    });
 
-    return {
-      code: 0,
-      message: '修改成功',
-      data: this.allCities.map((item) => ({ ...item })),
-    };
+    return this.getCities();
   }
 
-  deleteCity(cityName: string) {
+  async deleteCity(cityName: string) {
     const normalizedName = this.normalizeAndValidateCityName(cityName);
-    const index = this.findCityIndex(normalizedName);
-    if (index < 0) {
+    const city = await this.prisma.city.findUnique({
+      where: { cityName: normalizedName },
+    });
+    if (!city) {
       throw new NotFoundException('未找到待删除的城市');
     }
 
-    this.allCities.splice(index, 1);
-    return {
-      code: 0,
-      message: '删除成功',
-      data: this.allCities.map((item) => ({ ...item })),
-    };
+    await this.prisma.city.delete({
+      where: { cityId: city.cityId },
+    });
+
+    return this.getCities();
   }
 
-  private buildMockCities() {
-    const weatherPool = ['晴', '多云', '阴', '小雨', '中雨', '雷阵雨', '小雪'];
-    const cityNames = [
-      '北京市',
-      '天津市',
-      '上海市',
-      '重庆市',
-      '石家庄市',
-      '太原市',
-      '呼和浩特市',
-      '沈阳市',
-      '长春市',
-      '哈尔滨市',
-      '南京市',
-      '杭州市',
-      '合肥市',
-      '福州市',
-      '南昌市',
-      '济南市',
-      '郑州市',
-      '武汉市',
-      '长沙市',
-      '广州市',
-      '南宁市',
-      '海口市',
-      '成都市',
-      '贵阳市',
-      '昆明市',
-      '拉萨市',
-      '西安市',
-      '兰州市',
-      '西宁市',
-      '银川市',
-      '乌鲁木齐市',
-      '香港特别行政区',
-      '澳门特别行政区',
-      '台北市',
-    ];
-    return cityNames.map((cityName) =>
-      this.buildCityItem(cityName, weatherPool),
-    );
+  private async seedCities() {
+    await this.prisma.city.createMany({
+      data: CITY_SEED_DATA,
+      skipDuplicates: true,
+    });
   }
 
   private normalizeKeyword(keyword?: string) {
-    return (keyword ?? '').trim().toLocaleLowerCase();
+    return (keyword ?? '').trim();
   }
 
   private normalizeAndValidateCityName(cityName: string) {
@@ -144,37 +141,22 @@ export class CitiesService {
     return normalizedName;
   }
 
-  private findCityIndex(cityName: string) {
-    const normalizedKeyword = this.normalizeKeyword(cityName);
-    return this.allCities.findIndex(
-      (item) => this.normalizeKeyword(item.cityName) === normalizedKeyword,
-    );
-  }
+  private async toCityListItem(city: City) {
+    const summary = await this.weatherService.getCitySummary(city.cityId, {
+      preferCache: true,
+      allowFetch: false,
+    });
 
-  private buildCityItem(
-    cityName: string,
-    weatherPool?: string[],
-  ): CityWeatherItem {
-    const weatherOptions = weatherPool ?? [
-      '晴',
-      '多云',
-      '阴',
-      '小雨',
-      '中雨',
-      '雷阵雨',
-      '小雪',
-    ];
-    const weatherText =
-      weatherOptions[Math.floor(Math.random() * weatherOptions.length)];
-    const degree = this.randomInteger(-5, 38);
     return {
-      cityName,
-      weatherText,
-      temperature: `${degree}°C`,
+      cityId: city.cityId,
+      cityName: city.cityName,
+      cityCode: city.cityCode,
+      province: city.province,
+      country: city.country,
+      latitude: city.latitude,
+      longitude: city.longitude,
+      weatherText: summary.weatherText,
+      temperature: summary.temperature,
     };
-  }
-
-  private randomInteger(min: number, max: number): number {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 }

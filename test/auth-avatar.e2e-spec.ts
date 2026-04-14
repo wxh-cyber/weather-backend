@@ -6,6 +6,20 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppModule } from '../src/app.module';
 
+type LoginResponseBody = {
+  data?: {
+    token?: string;
+  };
+};
+
+type AvatarUploadResponseBody = {
+  code?: number;
+  message?: string;
+  data?: {
+    avatarUrl?: string;
+  };
+};
+
 describe('AuthAvatar (e2e)', () => {
   let app: INestApplication<App>;
   let token = '';
@@ -25,7 +39,8 @@ describe('AuthAvatar (e2e)', () => {
         email: 'demo@weather.com',
         password: '123456',
       });
-    token = loginRes.body?.data?.token || '';
+    const loginBody = loginRes.body as LoginResponseBody;
+    token = loginBody.data?.token ?? '';
   });
 
   afterAll(async () => {
@@ -46,11 +61,12 @@ describe('AuthAvatar (e2e)', () => {
         filename: 'avatar.png',
         contentType: 'image/png',
       });
+    const responseBody = res.body as AvatarUploadResponseBody;
 
     expect(res.status).toBe(201);
-    expect(res.body.code).toBe(0);
-    expect(res.body.message).toBe('头像上传成功');
-    expect(res.body.data.avatarUrl).toContain('/uploads/avatars/');
+    expect(responseBody.code).toBe(0);
+    expect(responseBody.message).toBe('头像上传成功');
+    expect(responseBody.data?.avatarUrl).toContain('/uploads/avatars/');
   });
 
   it('should reject non-image file', async () => {

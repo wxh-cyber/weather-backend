@@ -42,7 +42,7 @@ Requires a running MySQL instance. The database `weather_backend` must exist bef
 **Framework:** NestJS (Express platform) with Prisma ORM, MySQL database.
 
 **Module layout:**
-- `src/auth/` — User registration, login, profile management, avatar upload, login history
+- `src/auth/` — User registration, login, profile management (`nickname`, `phone`, `qq`, `wechat`), avatar upload, login history (`GET /auth/login-records`)
 - `src/cities/` — City weather listing with keyword search
 - `src/prisma/` — Singleton `PrismaService` (global module, injected everywhere)
 - `src/app.module.ts` — Root module wiring: `ConfigModule` (global), `PrismaModule`, `AuthModule`, `CitiesModule`
@@ -51,7 +51,7 @@ Requires a running MySQL instance. The database `weather_backend` must exist bef
 
 **Password hashing:** SHA-256 via Node.js built-in `crypto.createHash`.
 
-**Cities data:** Entirely mock data generated at startup using `mockjs`. Weather values are randomized on each server start, not persisted. `GET /cities?keyword=` filters by city name substring.
+**Cities data:** In-memory mock data built in `CitiesService` constructor using a hardcoded list of 34 Chinese cities with randomly assigned weather. Changes (CRUD) mutate the in-memory array only — data resets on restart. Endpoints: `GET /cities?keyword=` (filter by substring), `POST /cities` (add), `PUT /cities/:cityName` (rename), `DELETE /cities/:cityName` (remove).
 
 **File uploads:** Avatar images saved to `uploads/avatars/` at process CWD, served as static files at `/uploads/`. Max 2 MB, JPEG/PNG/WebP only.
 
@@ -65,6 +65,6 @@ Requires a running MySQL instance. The database `weather_backend` must exist bef
 
 ## Key Patterns
 
-- DTOs live in `src/auth/dto/` and use `class-validator` decorators; `ValidationPipe` with `whitelist: true` strips unknown fields.
+- DTOs live in `src/auth/dto/` and `src/cities/dto/`, using `class-validator` decorators; `ValidationPipe` is configured with `whitelist: true`, `transform: true`, and `enableImplicitConversion: true`.
 - `PrismaModule` is global — no need to import it in feature modules.
 - Error handling in services uses a private `handlePrismaError()` pattern: re-throw NestJS HTTP exceptions as-is, wrap Prisma errors as 500.

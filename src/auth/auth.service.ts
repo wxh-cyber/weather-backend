@@ -1,28 +1,30 @@
 import {
   BadRequestException,
   ConflictException,
-  InternalServerErrorException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import type { LoginRecord, User } from '@prisma/client';
+import { compare, hash } from 'bcryptjs';
+import type { LoginRecord, RefreshToken, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthTokenService } from './auth-token.service';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-
-type LoginContext = {
-  ipAddress?: string;
-  userAgent?: string;
-};
+import type { AuthUser, LoginContext } from './auth.types';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly authTokenService: AuthTokenService,
+  ) {}
 
   async onModuleInit() {
     await this.ensureDemoUser();
@@ -43,7 +45,7 @@ export class AuthService implements OnModuleInit {
       const user = await this.prisma.user.create({
         data: {
           email: normalizedEmail,
-          passwordHash: this.hashPassword(dto.password),
+          passwordHash: await hash(dto.password, 10),
           nickname: dto.nickname?.trim() || null,
         },
       });
@@ -68,7 +70,7 @@ export class AuthService implements OnModuleInit {
       if (!user) {
         throw new NotFoundException('账号未注册');
       }
-      if (user.passwordHash !== this.hashPassword(dto.password)) {
+      if (!(await compare(dto.password, user.passwordHash))) {
         throw new UnauthorizedException('密码错误');
       }
 
@@ -81,11 +83,15 @@ export class AuthService implements OnModuleInit {
         },
       });
 
+      const tokens = await this.issueTokens(user);
+
       return {
         code: 0,
         message: '登录成功',
         data: {
-          token: `mock-token-${user.userId}`,
+          token: tokens.accessToken,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
           user: this.toAuthUser(user),
         },
       };
@@ -94,24 +100,90 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async getProfile(authHeader?: string) {
+  async refresh(dto: RefreshTokenDto) {
     try {
-      const user = await this.resolveUserFromAuthHeader(authHeader);
+      const payload = this.authTokenService.verifyRefreshToken(
+        dto.refreshToken,
+      );
+      if (!payload.tokenId) {
+        throw new UnauthorizedException('刷新令牌无效');
+      }
+
+      const storedToken = await this.prisma.refreshToken.findUnique({
+        where: { tokenId: payload.tokenId },
+      });
+      const user = await this.prisma.user.findUnique({
+        where: { userId: payload.sub },
+      });
+
+      this.assertRefreshTokenValid(storedToken, dto.refreshToken, payload.sub);
+      if (!user) {
+        throw new UnauthorizedException('登录状态已失效');
+      }
+
+      await this.prisma.refreshToken.update({
+        where: { tokenId: storedToken!.tokenId },
+        data: { revokedAt: new Date() },
+      });
+
+      const tokens = await this.issueTokens(user);
+
       return {
         code: 0,
-        message: '获取成功',
-        data: this.toProfile(user),
+        message: '刷新成功',
+        data: {
+          token: tokens.accessToken,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          user: this.toAuthUser(user),
+        },
       };
     } catch (error) {
       this.handlePrismaError(error);
     }
   }
 
-  async getLoginRecords(authHeader?: string) {
+  async logout(userId: string, dto: RefreshTokenDto) {
     try {
-      const user = await this.resolveUserFromAuthHeader(authHeader);
+      const payload = this.authTokenService.verifyRefreshToken(
+        dto.refreshToken,
+      );
+      if (!payload.tokenId || payload.sub !== userId) {
+        throw new UnauthorizedException('刷新令牌无效');
+      }
+
+      const storedToken = await this.prisma.refreshToken.findUnique({
+        where: { tokenId: payload.tokenId },
+      });
+      this.assertRefreshTokenValid(storedToken, dto.refreshToken, userId);
+
+      await this.prisma.refreshToken.update({
+        where: { tokenId: payload.tokenId },
+        data: { revokedAt: new Date() },
+      });
+
+      return {
+        code: 0,
+        message: '退出成功',
+        data: null,
+      };
+    } catch (error) {
+      this.handlePrismaError(error);
+    }
+  }
+
+  getProfile(user: AuthUser) {
+    return {
+      code: 0,
+      message: '获取成功',
+      data: this.toProfile(user),
+    };
+  }
+
+  async getLoginRecords(userId: string) {
+    try {
       const records = await this.prisma.loginRecord.findMany({
-        where: { userId: user.userId },
+        where: { userId },
         orderBy: { loginTime: 'desc' },
       });
 
@@ -125,12 +197,10 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async updateProfile(authHeader: string | undefined, dto: UpdateProfileDto) {
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
     try {
-      const user = await this.resolveUserFromAuthHeader(authHeader);
-
       const updatedUser = await this.prisma.user.update({
-        where: { userId: user.userId },
+        where: { userId },
         data: {
           ...(dto.nickname !== undefined
             ? { nickname: dto.nickname.trim() || null }
@@ -154,11 +224,10 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  async updateAvatar(authHeader: string | undefined, avatarUrl: string) {
+  async updateAvatar(userId: string, avatarUrl: string) {
     try {
-      const user = await this.resolveUserFromAuthHeader(authHeader);
       const updatedUser = await this.prisma.user.update({
-        where: { userId: user.userId },
+        where: { userId },
         data: { avatarUrl: avatarUrl.trim() },
       });
 
@@ -174,31 +243,53 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private async resolveUserFromAuthHeader(authHeader?: string) {
-    if (!authHeader) {
-      throw new UnauthorizedException('缺少登录凭证');
-    }
-
-    const [scheme, token] = authHeader.split(' ');
-    if (scheme !== 'Bearer' || !token) {
-      throw new UnauthorizedException('登录凭证格式错误');
-    }
-    if (!token.startsWith('mock-token-')) {
-      throw new UnauthorizedException('登录凭证无效');
-    }
-
-    const userId = token.slice('mock-token-'.length);
-    if (!userId) {
-      throw new BadRequestException('登录凭证解析失败');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { userId },
+  private async issueTokens(user: User) {
+    const tokenId = randomUUID();
+    const accessToken = this.authTokenService.signAccessToken({
+      sub: user.userId,
+      email: user.email,
     });
-    if (!user) {
-      throw new UnauthorizedException('登录状态已失效');
+    const refreshToken = this.authTokenService.signRefreshToken({
+      sub: user.userId,
+      email: user.email,
+      tokenId,
+    });
+
+    await this.prisma.refreshToken.create({
+      data: {
+        tokenId,
+        tokenHash: this.hashRefreshToken(refreshToken),
+        expiresAt: this.resolveRefreshTokenExpiry(),
+        userId: user.userId,
+      },
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  private assertRefreshTokenValid(
+    storedToken: RefreshToken | null,
+    refreshToken: string,
+    expectedUserId: string,
+  ) {
+    if (!storedToken) {
+      throw new UnauthorizedException('刷新令牌不存在');
     }
-    return user;
+    if (storedToken.userId !== expectedUserId) {
+      throw new UnauthorizedException('刷新令牌不属于当前用户');
+    }
+    if (storedToken.revokedAt) {
+      throw new UnauthorizedException('刷新令牌已失效');
+    }
+    if (storedToken.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('刷新令牌已过期');
+    }
+    if (storedToken.tokenHash !== this.hashRefreshToken(refreshToken)) {
+      throw new UnauthorizedException('刷新令牌校验失败');
+    }
   }
 
   private async ensureDemoUser() {
@@ -216,7 +307,7 @@ export class AuthService implements OnModuleInit {
       await this.prisma.user.create({
         data: {
           email: demoEmail,
-          passwordHash: this.hashPassword('123456'),
+          passwordHash: await hash('123456', 10),
           nickname: '演示账号',
         },
       });
@@ -225,11 +316,15 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private hashPassword(password: string) {
-    return createHash('sha256').update(password).digest('hex');
+  private resolveRefreshTokenExpiry() {
+    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }
 
-  private toAuthUser(user: User) {
+  private hashRefreshToken(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private toAuthUser(user: Pick<User, 'userId' | 'email' | 'nickname'>) {
     return {
       userId: user.userId,
       email: user.email,
@@ -237,7 +332,7 @@ export class AuthService implements OnModuleInit {
     };
   }
 
-  private toProfile(user: User) {
+  private toProfile(user: AuthUser | User) {
     return {
       userId: user.userId,
       email: user.email,
