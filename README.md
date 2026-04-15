@@ -179,22 +179,133 @@ npm run prisma:migrate
 
 ```text
 weather-backend/
-├─ prisma/                         Prisma 配置、数据模型与迁移文件
-│  ├─ migrations/                  数据库迁移记录
-│  └─ schema.prisma                Prisma 数据模型定义
+├─ prisma/
+│  ├─ migrations/
+│  │  ├─ init/                     初始建表（User、LoginRecord）
+│  │  └─ 202604141430_backend_upgrade/  升级（RefreshToken、City、UserCity、WeatherSnapshot）
+│  └─ schema.prisma                数据模型定义（6 张表）
 ├─ src/
-│  ├─ auth/                        认证、资料、头像、登录记录
-│  ├─ cities/                      城市基础信息与用户城市
-│  ├─ weather/                     天气查询、Provider 与缓存
-│  ├─ common/                      过滤器、拦截器等公共能力
-│  ├─ prisma/                      Prisma 服务封装
-│  ├─ app.module.ts                应用主模块
-│  └─ main.ts                      应用入口
-├─ uploads/                        上传文件目录
-├─ package.json                    项目脚本与依赖配置
-├─ .env.example                    环境变量示例
-└─ README.md                       项目说明文档
+│  ├─ auth/                        认证模块
+│  │  ├─ dto/
+│  │  │  ├─ login.dto.ts           登录请求体
+│  │  │  ├─ register.dto.ts        注册请求体
+│  │  │  ├─ refresh-token.dto.ts   令牌刷新请求体
+│  │  │  └─ update-profile.dto.ts  资料更新请求体
+│  │  ├─ auth.constants.ts         令牌类型与默认过期时间常量
+│  │  ├─ auth.types.ts             TokenPayload、AuthUser、LoginContext 类型定义
+│  │  ├─ auth-token.service.ts     JWT 签发与校验（jsonwebtoken）
+│  │  ├─ auth.guard.ts             Bearer token 守卫，解析 AccessToken 并查库
+│  │  ├─ current-user.decorator.ts @CurrentUser() 参数装饰器
+│  │  ├─ auth.service.ts           注册、登录、刷新、注销、资料、头像、登录记录
+│  │  ├─ auth.controller.ts        /auth 路由
+│  │  ├─ auth.module.ts            模块声明，导出 AuthGuard、AuthTokenService
+│  │  ├─ auth.service.spec.ts      AuthService 单元测试（11 个用例）
+│  │  └─ auth.controller.spec.ts   AuthController 单元测试
+│  ├─ cities/                      城市模块
+│  │  ├─ dto/
+│  │  │  ├─ create-city.dto.ts     新增城市请求体
+│  │  │  ├─ update-city.dto.ts     重命名城市请求体
+│  │  │  └─ add-user-city.dto.ts   添加用户城市请求体
+│  │  ├─ city-seed.ts              启动时写入数据库的 34 个中国城市初始数据
+│  │  ├─ cities.service.ts         城市 CRUD（DB 持久化，启动时自动 seed）
+│  │  ├─ cities.controller.ts      /cities 路由
+│  │  ├─ user-cities.service.ts    用户城市关联增删改、默认城市设置
+│  │  ├─ user-cities.controller.ts /user/cities 路由（全部需要 Bearer 认证）
+│  │  ├─ cities.module.ts          模块声明，导入 WeatherModule、AuthModule
+│  │  ├─ cities.service.spec.ts    CitiesService 单元测试
+│  │  └─ user-cities.service.spec.ts  UserCitiesService 单元测试
+│  ├─ weather/                     天气模块
+│  │  ├─ weather.types.ts          WeatherCurrent、WeatherHourlyItem 等类型定义
+│  │  ├─ weather.provider.ts       对接 Open-Meteo API，负责实际网络请求与城市解析
+│  │  ├─ weather.service.ts        快照缓存逻辑：优先命中 DB，过期后重新拉取
+│  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily）
+│  │  ├─ weather.module.ts         模块声明，导出 WeatherService、WeatherProvider
+│  │  └─ weather.service.spec.ts   WeatherService 单元测试
+│  ├─ common/
+│  │  ├─ filters/
+│  │  │  └─ http-exception.filter.ts  全局异常过滤器，统一错误响应格式
+│  │  └─ interceptors/
+│  │     └─ response.interceptor.ts   全局响应拦截器，自动包装 { code, message, data }
+│  ├─ prisma/
+│  │  ├─ prisma.service.ts         PrismaClient 封装
+│  │  └─ prisma.module.ts          全局模块，无需在 feature 模块中重复导入
+│  ├─ app.module.ts                根模块，组装 ConfigModule、PrismaModule 等
+│  └─ main.ts                      应用入口，含 CORS、ValidationPipe、静态资源、Swagger、端口重试
+├─ uploads/                        运行时头像上传目录（自动创建）
+├─ package.json
+├─ .env.example
+└─ README.md
 ```
+
+## 模块说明
+
+### auth 模块
+
+负责完整的身份认证生命周期。`AuthTokenService` 使用 `jsonwebtoken` 对 AccessToken 和 RefreshToken 分别签发与校验，两者使用不同密钥（`JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`）。刷新令牌采用 **Rotation 策略**：每次刷新都撤销旧 token 并签发新的一对，撤销状态写入 `RefreshToken` 表的 `revokedAt` 字段。
+
+`AuthGuard` 作为可复用守卫，在请求头中提取 Bearer token，校验后从数据库加载完整用户对象挂载到 `request.user`，供 `@CurrentUser()` 装饰器取用。
+
+密码方面支持双重兼容：存量 SHA-256 密码在登录时自动升级为 bcrypt，无需用户感知。
+
+### cities 模块
+
+城市数据持久化到 `City` 表，服务启动时通过 `city-seed.ts` 的 34 个初始城市数据执行 `createMany + skipDuplicates`，保证幂等。`CitiesService` 在返回城市列表时，会为每个城市异步拉取天气摘要（`getCitySummary`）一并返回，方便前端直接渲染。
+
+`UserCitiesService` 维护 `UserCity` 关联表，支持添加、删除、设置默认城市，以及在删除后自动将下一个城市提升为默认。
+
+### weather 模块
+
+`WeatherProvider` 负责两件事：通过 Open-Meteo Geocoding API 解析城市坐标，以及通过 Forecast API 拉取当前天气、24 小时预报和 7 日预报，再将天气码映射为中文文本。
+
+`WeatherService` 在每次查询前先检查 `WeatherSnapshot` 表中是否存在未过期的缓存（以 `cityId + source` 为唯一键）。若缓存可用则直接反序列化返回；若已过期或不存在则调用 Provider 重新拉取，并将结果 upsert 回数据库，过期时间由 `WEATHER_CACHE_MINUTES` 控制。
+
+### common 模块
+
+- **`HttpExceptionFilter`**：捕获所有异常，将 `HttpException` 的状态码和消息统一格式化为 `{ code, message, data: null, timestamp, path }`，500 错误返回通用提示而非内部细节。
+- **`ResponseInterceptor`**：拦截成功响应，若返回值已是标准格式则透传，否则自动包装为 `{ code: 0, message: "success", data: ... }`。
+
+---
+
+## 可拓展点
+
+以下是在现有架构基础上较自然的演进方向，每条均可独立实施，不影响其他模块。
+
+### 认证增强
+
+- **邮箱验证**：注册时发送确认邮件，在 `User` 表增加 `emailVerified` 字段，未验证账号限制登录或接口权限。实现上可引入 `nodemailer` 或调用第三方邮件服务，生成短时有效的验证 token 存入 Redis 或临时表。
+- **OAuth2 第三方登录**：接入 GitHub / Google 等，通过 Passport.js 的 strategy 体系扩展，复用现有 `AuthTokenService` 签发 JWT，对账号与第三方 ID 的绑定关系新增一张 `OAuthAccount` 表。
+- **双因素认证（2FA）**：在登录流程中增加一个中间态（`needs_2fa`），引入基于时间的一次性密码（TOTP）。
+- **登录限流**：在 `AuthController` 的 `/login` 路由上挂载 `ThrottlerGuard`，对同一 IP 的失败尝试次数进行限制，防止暴力破解。
+
+### 城市与用户城市
+
+- **城市管理接口鉴权**：`POST /cities`、`PUT /cities/:cityName`、`DELETE /cities/:cityName` 目前对所有请求开放，可在 `CitiesController` 上加入基于角色（`role` 字段）的 `RolesGuard`，限制只有管理员才能增删改城市。
+- **城市排序调整**：`UserCity` 表已有 `sortOrder` 字段，可新增 `PATCH /user/cities/order` 接口，接收城市 ID 顺序数组并批量更新 `sortOrder`。
+- **城市搜索增强**：当前通过 `cityName LIKE` 模糊匹配，可扩展为同时匹配 `province`、`cityCode`，或集成全文索引。
+
+### 天气数据
+
+- **多 Provider 支持**：`WeatherProvider` 当前硬编码 Open-Meteo，可将其抽象为 `IWeatherProvider` 接口，再提供 `AccuWeatherProvider`、`QWeatherProvider` 等实现，在 `weather.module.ts` 中通过配置项动态注入不同 provider。
+- **天气预警推送**：引入 `Bull` 或 `BullMQ` 队列，定时扫描用户默认城市的天气快照，当天气码匹配恶劣天气条件时通过 WebSocket 或 Server-Sent Events 通知已连接的前端。
+- **精细缓存失效**：当前以固定分钟数过期，可改为在城市坐标变更或 provider 返回数据出错时主动 invalidate，减少陈旧数据的展示窗口。
+- **历史天气**：Open-Meteo 提供历史数据接口，可扩展 `WeatherSnapshot` 或新增 `WeatherHistory` 表存储历史记录，对外暴露 `GET /weather/history?cityId=&date=` 接口。
+
+### 性能与可靠性
+
+- **Redis 缓存层**：将天气快照的热点数据同步写入 Redis，查询时优先命中内存缓存，降低 MySQL 查询压力。接入 `@nestjs/cache-manager` + `cache-manager-ioredis` 即可。
+- **异步天气预热**：可在用户添加城市（`POST /user/cities`）时，将城市 ID 推入 Bull 队列，后台异步拉取天气并写入快照，而不是在请求路径上同步拉取。
+
+### 可观测性
+
+- **结构化日志**：引入 `winston` 并配置 `NestJS` 的自定义 `LoggerService`，对每条请求的耗时、用户 ID、接口路径输出 JSON 日志，便于接入 ELK 或 Loki 等日志平台。
+- **健康检查**：使用 `@nestjs/terminus` 暴露 `GET /health` 端点，检查数据库连接状态，供 Docker / Kubernetes 的 liveness probe 使用。
+- **接口指标**：集成 `prom-client`，暴露 `GET /metrics`，供 Prometheus 采集请求量、响应时长等指标。
+
+### 工程化
+
+- **Docker 化**：编写 `Dockerfile` 和 `docker-compose.yml`，将应用与 MySQL 一并容器化，一键启动完整开发环境。
+- **API 版本管理**：通过 `app.setGlobalPrefix('api/v1')` 或 NestJS 内置版本控制，为未来的破坏性变更预留升级通道。
+- **E2E 测试**：利用 `@nestjs/testing` + `supertest` 搭建真实数据库测试环境，覆盖登录→刷新→注销、添加城市→查看天气等完整流程。
 
 ## 联调说明
 
