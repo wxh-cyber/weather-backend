@@ -49,6 +49,27 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api-docs', app, document);
 
-  await app.listen(configService.get<number>('PORT', 3000));
+  const configuredPort = Number(configService.get<string>('PORT', '3000'));
+  const maxPortRetry = Number(configService.get<string>('PORT_RETRY_COUNT', '5'));
+  const basePort = Number.isFinite(configuredPort) ? configuredPort : 3000;
+
+  let currentPort = basePort;
+  for (let attempt = 0; attempt <= maxPortRetry; attempt += 1) {
+    try {
+      await app.listen(currentPort);
+      return;
+    } catch (error) {
+      const isAddressInUse =
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'EADDRINUSE';
+      const shouldRetry = isAddressInUse && attempt < maxPortRetry;
+      if (!shouldRetry) {
+        throw error;
+      }
+      currentPort += 1;
+    }
+  }
 }
 void bootstrap();

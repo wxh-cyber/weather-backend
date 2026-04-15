@@ -63,14 +63,15 @@ export class AuthService implements OnModuleInit {
   async login(dto: LoginDto, context: LoginContext = {}) {
     try {
       const normalizedEmail = dto.email.toLowerCase().trim();
-      const user = await this.prisma.user.findUnique({
+      const storedUser = await this.prisma.user.findUnique({
         where: { email: normalizedEmail },
       });
 
-      if (!user) {
+      if (!storedUser) {
         throw new NotFoundException('账号未注册');
       }
-      if (!(await compare(dto.password, user.passwordHash))) {
+      const user = await this.resolveAuthenticatedUser(storedUser, dto.password);
+      if (!user) {
         throw new UnauthorizedException('密码错误');
       }
 
@@ -297,23 +298,59 @@ export class AuthService implements OnModuleInit {
       const demoEmail = 'demo@weather.com';
       const existingDemo = await this.prisma.user.findUnique({
         where: { email: demoEmail },
-        select: { userId: true },
+        select: { userId: true, passwordHash: true },
       });
 
+      if (existingDemo && this.isBcryptHash(existingDemo.passwordHash)) {
+        return;
+      }
+
+      const nextPasswordHash = await hash('123456', 10);
+
       if (existingDemo) {
+        await this.prisma.user.update({
+          where: { userId: existingDemo.userId },
+          data: { passwordHash: nextPasswordHash },
+        });
         return;
       }
 
       await this.prisma.user.create({
         data: {
           email: demoEmail,
-          passwordHash: await hash('123456', 10),
+          passwordHash: nextPasswordHash,
           nickname: '演示账号',
         },
       });
     } catch (error) {
       this.handlePrismaError(error);
     }
+  }
+
+  private async resolveAuthenticatedUser(user: User, password: string) {
+    if (this.isBcryptHash(user.passwordHash)) {
+      return (await compare(password, user.passwordHash)) ? user : null;
+    }
+
+    if (!this.matchesLegacyPassword(password, user.passwordHash)) {
+      return null;
+    }
+
+    const upgradedPasswordHash = await hash(password, 10);
+    const upgradedUser = await this.prisma.user.update({
+      where: { userId: user.userId },
+      data: { passwordHash: upgradedPasswordHash },
+    });
+
+    return upgradedUser;
+  }
+
+  private isBcryptHash(passwordHash: string) {
+    return /^\$2[aby]\$\d{2}\$/.test(passwordHash);
+  }
+
+  private matchesLegacyPassword(password: string, passwordHash: string) {
+    return createHash('sha256').update(password).digest('hex') === passwordHash;
   }
 
   private resolveRefreshTokenExpiry() {

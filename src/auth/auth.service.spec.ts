@@ -113,6 +113,67 @@ describe('AuthService', () => {
     expect(prisma.refreshToken.create).toHaveBeenCalled();
   });
 
+  it('should login with legacy sha256 password and upgrade it to bcrypt', async () => {
+    const legacyPasswordHash = createHash('sha256').update('123456').digest('hex');
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'legacy-user',
+      email: 'legacy@weather.com',
+      passwordHash: legacyPasswordHash,
+      nickname: '旧用户',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+    prisma.user.update.mockImplementation(async ({ data }) => ({
+      userId: 'legacy-user',
+      email: 'legacy@weather.com',
+      passwordHash: data.passwordHash,
+      nickname: '旧用户',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    }));
+    prisma.loginRecord.create.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    const result = await service.login({
+      email: 'legacy@weather.com',
+      password: '123456',
+    });
+
+    expect(result.code).toBe(0);
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { userId: 'legacy-user' },
+      data: { passwordHash: expect.stringMatching(/^\$2[aby]\$/) },
+    });
+    expect(prisma.loginRecord.create).toHaveBeenCalled();
+    expect(prisma.refreshToken.create).toHaveBeenCalled();
+  });
+
+  it('should throw unauthorized when legacy password does not match', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'legacy-user',
+      email: 'legacy@weather.com',
+      passwordHash: createHash('sha256').update('123456').digest('hex'),
+      nickname: '旧用户',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+
+    await expect(
+      service.login({
+        email: 'legacy@weather.com',
+        password: 'wrong-password',
+      }),
+    ).rejects.toThrow(new UnauthorizedException('密码错误'));
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
   it('should refresh tokens with a valid refresh token', async () => {
     authTokenService.verifyRefreshToken.mockReturnValue({
       sub: 'user-1',
@@ -270,5 +331,20 @@ describe('AuthService', () => {
         password: '123456',
       }),
     ).rejects.toThrow(new NotFoundException('账号未注册'));
+  });
+
+  it('should repair demo account to bcrypt when existing password hash is legacy', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'demo-user',
+      passwordHash: createHash('sha256').update('123456').digest('hex'),
+    });
+    prisma.user.update.mockResolvedValue({});
+
+    await service.onModuleInit();
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { userId: 'demo-user' },
+      data: { passwordHash: expect.stringMatching(/^\$2[aby]\$/) },
+    });
   });
 });
