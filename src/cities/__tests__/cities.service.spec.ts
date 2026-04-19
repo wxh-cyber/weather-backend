@@ -1,6 +1,6 @@
-import { CitiesService } from './cities.service';
-import { CityResolverService } from './city-resolver.service';
-import type { CityMetadata } from '../weather/weather.types';
+import { CitiesService } from '../cities.service';
+import { CityResolverService } from '../city-resolver.service';
+import type { CityMetadata } from '../../weather/weather.types';
 
 const createPrismaMock = () => ({
   city: {

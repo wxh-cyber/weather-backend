@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { WeatherController } from './weather.controller';
-import type { WeatherService } from './weather.service';
+import { WeatherController } from '../weather.controller';
+import type { WeatherService } from '../weather.service';
 
 const createWeatherServiceMock = () => ({
   getCurrentWeather: jest.fn(),

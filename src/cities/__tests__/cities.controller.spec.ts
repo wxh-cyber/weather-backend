@@ -1,6 +1,6 @@
-import { CitiesController } from './cities.controller';
-import type { CitiesService } from './cities.service';
-import type { UserCitiesService } from './user-cities.service';
+import { CitiesController } from '../cities.controller';
+import type { CitiesService } from '../cities.service';
+import type { UserCitiesService } from '../user-cities.service';
 
 const createCitiesServiceMock = () => ({
   getCities: jest.fn(),

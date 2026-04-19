@@ -11,7 +11,7 @@
 
 ## 项目简介
 
-`weather-backend` 是“小慕天气”系统的后端服务，基于 `NestJS + Prisma + MySQL` 构建，当前已从早期联调版演进为具备认证、用户资料、城市管理、用户城市、真实天气拉取与缓存能力的毕业设计后端。项目同时提供 Swagger 文档，便于前后端联调与答辩展示。
+`weather-backend` 是“小慕天气”系统的后端服务，基于 `NestJS + Prisma + MySQL` 构建，当前已从早期联调版演进为具备认证、用户资料、城市管理、用户城市、真实天气拉取、逆地理编码与缓存能力的毕业设计后端。项目同时提供 Swagger 文档，便于前后端联调与答辩展示。
 
 ## 技术栈
 
@@ -35,7 +35,7 @@
 - 可选鉴权能力：同一接口可按是否携带有效 Bearer token 自动切换匿名 / 登录用户语义
 - 个人资料查询与更新
 - 头像上传与静态资源访问
-- 登录记录写入与查询
+- 登录记录写入、查询与登录地址解析
 - 城市基础信息查询与维护
 - 用户关注城市列表维护、默认城市设置与排序语义维护
 - 真实天气数据拉取：
@@ -197,7 +197,14 @@ weather-backend/
 │  │  └─ 202604141430_backend_upgrade/  升级（RefreshToken、City、UserCity、WeatherSnapshot）
 │  └─ schema.prisma                数据模型定义（6 张表）
 ├─ src/
+│  ├─ __tests__/
+│  │  └─ app.controller.spec.ts    根控制器单元测试
 │  ├─ auth/                        认证模块
+│  │  ├─ __tests__/
+│  │  │  ├─ auth.controller.spec.ts
+│  │  │  ├─ auth.service.spec.ts
+│  │  │  ├─ login-geo.service.spec.ts
+│  │  │  └─ optional-auth.guard.spec.ts
 │  │  ├─ dto/
 │  │  │  ├─ login.dto.ts           登录请求体
 │  │  │  ├─ register.dto.ts        注册请求体
@@ -209,17 +216,20 @@ weather-backend/
 │  │  ├─ auth.guard.ts             Bearer token 守卫，解析 AccessToken 并查库
 │  │  ├─ optional-auth.guard.ts    可选鉴权守卫，兼容匿名与登录态分流接口
 │  │  ├─ current-user.decorator.ts @CurrentUser() 参数装饰器
+│  │  ├─ login-geo.service.ts      登录 IP 归属地解析服务
 │  │  ├─ auth.service.ts           注册、登录、刷新、注销、资料、头像、登录记录
 │  │  ├─ auth.controller.ts        /auth 路由
 │  │  ├─ auth.module.ts            模块声明，导出 AuthGuard、OptionalAuthGuard、AuthTokenService
-│  │  ├─ auth.service.spec.ts      AuthService 单元测试（11 个用例）
-│  │  ├─ auth.controller.spec.ts   AuthController 单元测试
-│  │  └─ optional-auth.guard.spec.ts  OptionalAuthGuard 单元测试
 │  ├─ cities/                      城市模块
+│  │  ├─ __tests__/
+│  │  │  ├─ cities.controller.spec.ts
+│  │  │  ├─ cities.service.spec.ts
+│  │  │  └─ user-cities.service.spec.ts
 │  │  ├─ dto/
 │  │  │  ├─ create-city.dto.ts     新增城市请求体
 │  │  │  ├─ update-city.dto.ts     重命名城市请求体
 │  │  │  └─ add-user-city.dto.ts   添加用户城市请求体
+│  │  ├─ city-alias.ts             城市别名与标准名映射
 │  │  ├─ city-seed.ts              启动时写入数据库的城市初始数据
 │  │  ├─ city-resolver.service.ts  城市解析与标准化服务
 │  │  ├─ cities.service.ts         公共城市 CRUD、种子修复与天气摘要聚合
@@ -227,19 +237,17 @@ weather-backend/
 │  │  ├─ user-cities.service.ts    用户城市关联增删改、默认城市设置
 │  │  ├─ user-cities.controller.ts /user/cities 路由（全部需要 Bearer 认证）
 │  │  ├─ cities.module.ts          模块声明，导入 WeatherModule、AuthModule
-│  │  ├─ cities.controller.spec.ts CitiesController 单元测试
-│  │  ├─ cities.service.spec.ts    CitiesService 单元测试
-│  │  └─ user-cities.service.spec.ts  UserCitiesService 单元测试
 │  ├─ weather/                     天气模块
+│  │  ├─ __tests__/
+│  │  │  ├─ weather.controller.spec.ts
+│  │  │  ├─ weather.provider.spec.ts
+│  │  │  └─ weather.service.spec.ts
 │  │  ├─ reverse-geocode.types.ts  逆地理编码结果类型定义
 │  │  ├─ weather.types.ts          WeatherCurrent、WeatherHourlyItem 等类型定义
 │  │  ├─ weather.provider.ts       对接 Open-Meteo API，负责实际网络请求与城市解析
-│  │  ├─ weather.provider.spec.ts  WeatherProvider 单元测试
 │  │  ├─ weather.service.ts        快照缓存逻辑：优先命中 DB，过期后重新拉取
 │  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily）
-│  │  ├─ weather.controller.spec.ts WeatherController 单元测试
-│  │  ├─ weather.module.ts         模块声明，导出 WeatherService、WeatherProvider
-│  │  └─ weather.service.spec.ts   WeatherService 单元测试
+│  │  └─ weather.module.ts         模块声明，导出 WeatherService、WeatherProvider
 │  ├─ common/
 │  │  ├─ filters/
 │  │  │  └─ http-exception.filter.ts  全局异常过滤器，统一错误响应格式
@@ -248,8 +256,11 @@ weather-backend/
 │  ├─ prisma/
 │  │  ├─ prisma.service.ts         PrismaClient 封装
 │  │  └─ prisma.module.ts          全局模块，无需在 feature 模块中重复导入
+│  ├─ app.controller.ts            根控制器
+│  ├─ app.service.ts               根服务
 │  ├─ app.module.ts                根模块，组装 ConfigModule、PrismaModule 等
 │  └─ main.ts                      应用入口，含 CORS、ValidationPipe、静态资源、Swagger、端口重试
+├─ test/                           e2e 测试目录与 Jest 配置
 ├─ uploads/                        运行时头像上传目录（自动创建）
 ├─ package.json
 ├─ .env.example
@@ -264,7 +275,7 @@ weather-backend/
 
 `AuthGuard` 作为可复用守卫，在请求头中提取 Bearer token，校验后从数据库加载完整用户对象挂载到 `request.user`，供 `@CurrentUser()` 装饰器取用。
 
-当前还补充了 `OptionalAuthGuard`，用于 `/cities` 这类既要兼容匿名访问、又要在登录时读取用户上下文的接口：没有凭证时直接放行，有合法凭证时挂载用户信息，有非法或过期凭证时继续返回 401。
+当前还补充了 `OptionalAuthGuard`，用于 `/cities` 这类既要兼容匿名访问、又要在登录时读取用户上下文的接口：没有凭证时直接放行，有合法凭证时挂载用户信息，有非法或过期凭证时继续返回 401。`LoginGeoService` 则负责把登录 IP 尽量解析为可读地址，补充到登录记录中，方便个人中心查看历史登录来源。
 
 密码方面支持双重兼容：存量 SHA-256 密码在登录时自动升级为 bcrypt，无需用户感知。
 
@@ -272,7 +283,7 @@ weather-backend/
 
 城市数据持久化到 `City` 表，服务启动时通过 `city-seed.ts` 的初始城市数据执行 `createMany + skipDuplicates`，并在启动阶段自动修复种子城市的坐标/编码异常。`CitiesService` 在返回城市列表时，会为每个城市异步拉取天气摘要（`getCitySummary`）一并返回，方便前端直接渲染。
 
-`CityResolverService` 负责把用户输入的城市名称解析成可入库的标准城市元数据，统一服务于新增城市、修复坐标和用户城市接入流程。
+`city-alias.ts` 负责收敛常见城市别名与标准名，`CityResolverService` 在此基础上把用户输入的城市名称解析成可入库的标准城市元数据，统一服务于新增城市、修复坐标和用户城市接入流程。
 
 `UserCitiesService` 维护 `UserCity` 关联表，支持添加、删除、设置默认城市、维持默认城市优先顺序，并在删除后自动将下一个城市提升为默认。
 
@@ -284,7 +295,7 @@ weather-backend/
 
 ### weather 模块
 
-`WeatherProvider` 负责两件事：通过 Open-Meteo Geocoding API 解析城市坐标，以及通过 Forecast API 拉取当前天气、24 小时预报和 7 日预报，再将天气码映射为中文文本。
+`WeatherProvider` 负责两件事：通过 Open-Meteo Geocoding API 解析城市坐标，以及通过 Forecast API 拉取当前天气、24 小时预报和 7 日预报，再将天气码映射为中文文本。当前模块还补充了逆地理编码类型定义与对应测试，便于支撑前端天气地图页的地点展示。
 
 `WeatherService` 在每次查询前先检查 `WeatherSnapshot` 表中是否存在未过期的缓存（以 `cityId + source` 为唯一键）。若缓存可用则直接反序列化返回；若已过期或不存在则调用 Provider 重新拉取，并将结果 upsert 回数据库，过期时间由 `WEATHER_CACHE_MINUTES` 控制。
 

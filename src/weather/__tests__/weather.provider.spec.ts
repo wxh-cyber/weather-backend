@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { WeatherProvider } from './weather.provider';
+import { WeatherProvider } from '../weather.provider';
 
 const createConfigService = (overrides: Record<string, string | number> = {}) =>
   ({

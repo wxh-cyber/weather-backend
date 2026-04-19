@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { WeatherService } from './weather.service';
+import { WeatherService } from '../weather.service';
 
 const createPrismaMock = () => ({
   city: {

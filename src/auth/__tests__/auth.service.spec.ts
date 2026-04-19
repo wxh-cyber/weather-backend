@@ -7,7 +7,7 @@ import {
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
-import { AuthService } from './auth.service';
+import { AuthService } from '../auth.service';
 
 const createPrismaMock = () => ({
   user: {

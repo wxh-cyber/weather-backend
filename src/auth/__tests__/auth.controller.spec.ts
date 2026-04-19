@@ -1,5 +1,5 @@
-import { AuthController } from './auth.controller';
-import type { AuthService } from './auth.service';
+import { AuthController } from '../auth.controller';
+import type { AuthService } from '../auth.service';
 import type { Request } from 'express';
 
 const createAuthServiceMock = () => ({

@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { LoginGeoService } from './login-geo.service';
+import { LoginGeoService } from '../login-geo.service';
 
 describe('LoginGeoService', () => {
   let service: LoginGeoService;

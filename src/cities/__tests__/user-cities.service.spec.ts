@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { UserCitiesService } from './user-cities.service';
+import { UserCitiesService } from '../user-cities.service';
 
 const createPrismaMock = () => ({
   userCity: {

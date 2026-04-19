@@ -1,6 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
-import { OptionalAuthGuard } from './optional-auth.guard';
+import { OptionalAuthGuard } from '../optional-auth.guard';
 
 const createTokenServiceMock = () => ({
   verifyAccessToken: jest.fn(),
