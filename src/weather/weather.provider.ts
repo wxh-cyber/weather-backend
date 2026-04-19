@@ -218,13 +218,21 @@ export class WeatherProvider {
     return this.resolveCityByNameWithOpenMeteo(cityName);
   }
 
-  private async resolveCityByNameWithGaode(cityName: string): Promise<CityMetadata | null> {
+  private async resolveCityByNameWithGaode(
+    cityName: string,
+  ): Promise<CityMetadata | null> {
     const geocodingBaseUrl = this.configService.get<string>(
       'WEATHER_GEOCODING_GAODE_BASE_URL',
       'https://restapi.amap.com/v3/geocode/geo',
     );
-    const apiKey = this.configService.get<string>('WEATHER_GEOCODING_API_KEY', '');
-    const timeoutMs = this.configService.get<number>('WEATHER_GEOCODING_TIMEOUT_MS', 2500);
+    const apiKey = this.configService.get<string>(
+      'WEATHER_GEOCODING_API_KEY',
+      '',
+    );
+    const timeoutMs = this.configService.get<number>(
+      'WEATHER_GEOCODING_TIMEOUT_MS',
+      2500,
+    );
     if (!apiKey) {
       return null;
     }
@@ -304,7 +312,12 @@ export class WeatherProvider {
 
     const candidates = geocodes
       .map((item) => {
-        const city = this.normalizeGaodeCity(item.city, item.province, item.district, cityName);
+        const city = this.normalizeGaodeCity(
+          item.city,
+          item.province,
+          item.district,
+          cityName,
+        );
         const province = this.cleanGaodeText(item.province);
         const district = this.cleanGaodeText(item.district);
         const location = this.parseGaodeLocation(item.location);
@@ -314,7 +327,9 @@ export class WeatherProvider {
 
         return {
           cityName: city,
-          cityCode: this.cleanGaodeText(item.citycode) ?? this.cleanGaodeText(item.adcode),
+          cityCode:
+            this.cleanGaodeText(item.citycode) ??
+            this.cleanGaodeText(item.adcode),
           province,
           country: this.cleanGaodeText(item.country) ?? '中国',
           district,
@@ -362,8 +377,10 @@ export class WeatherProvider {
     }));
 
     if (
-      candidates.every((item) => this.normalizeCountry(item.country) !== '中国')
-      && this.looksLikeChineseCityName(cityName.trim())
+      candidates.every(
+        (item) => this.normalizeCountry(item.country) !== '中国',
+      ) &&
+      this.looksLikeChineseCityName(cityName.trim())
     ) {
       return null;
     }
@@ -371,18 +388,25 @@ export class WeatherProvider {
     return this.selectBestCandidate(cityName, candidates);
   }
 
-  private selectBestCandidate(cityName: string, candidates: GeocodingCandidate[]) {
+  private selectBestCandidate(
+    cityName: string,
+    candidates: GeocodingCandidate[],
+  ) {
     if (!candidates.length) {
       return null;
     }
 
-    const sortedCandidates = [...candidates].sort((left, right) => right.score - left.score);
+    const sortedCandidates = [...candidates].sort(
+      (left, right) => right.score - left.score,
+    );
     const bestCandidate = sortedCandidates[0];
     if (!bestCandidate) {
       return null;
     }
 
-    const minimumScore = this.looksLikeChineseCityName(cityName.trim()) ? 110 : 60;
+    const minimumScore = this.looksLikeChineseCityName(cityName.trim())
+      ? 110
+      : 60;
     return bestCandidate.score >= minimumScore ? bestCandidate : null;
   }
 
@@ -421,10 +445,18 @@ export class WeatherProvider {
     if (normalizedDistrict && normalizedDistrict === normalizedInput) {
       score += 32;
     }
-    if (normalizedCityName && normalizedInput && normalizedCityName.includes(normalizedInput)) {
+    if (
+      normalizedCityName &&
+      normalizedInput &&
+      normalizedCityName.includes(normalizedInput)
+    ) {
       score += 20;
     }
-    if (normalizedCityName && normalizedInput && normalizedInput.includes(normalizedCityName)) {
+    if (
+      normalizedCityName &&
+      normalizedInput &&
+      normalizedInput.includes(normalizedCityName)
+    ) {
       score += 18;
     }
     if (this.hasChineseAdministrativeSuffix(input.cityName)) {
@@ -619,35 +651,38 @@ export class WeatherProvider {
         return null;
       }
 
-      const payload = (await response.json()) as NominatimReverseGeocodeResponse;
+      const payload =
+        (await response.json()) as NominatimReverseGeocodeResponse;
       const address = payload.address;
       if (!address) {
         return null;
       }
 
-      const province = this.cleanNominatimText(address.state ?? address.province);
+      const province = this.cleanNominatimText(
+        address.state ?? address.province,
+      );
       const city = this.cleanNominatimText(
         address.city ?? address.town ?? address.village ?? address.county,
       );
       const district = this.cleanNominatimText(
-        address.city_district ?? address.district ?? address.suburb ?? address.township,
+        address.city_district ??
+          address.district ??
+          address.suburb ??
+          address.township,
       );
       const name = this.joinStreetNumber(
-        address.road
-          ?? address.neighbourhood
-          ?? address.neighborhood
-          ?? address.attraction
-          ?? address.building
-          ?? address.amenity
-          ?? payload.name,
+        address.road ??
+          address.neighbourhood ??
+          address.neighborhood ??
+          address.attraction ??
+          address.building ??
+          address.amenity ??
+          payload.name,
         address.house_number,
       );
-      const displayName = this.buildDisplayName([
-        province,
-        city,
-        district,
-        name,
-      ]) || this.cleanNominatimText(payload.display_name);
+      const displayName =
+        this.buildDisplayName([province, city, district, name]) ||
+        this.cleanNominatimText(payload.display_name);
 
       if (!displayName) {
         return null;
@@ -679,18 +714,18 @@ export class WeatherProvider {
     if (Array.isArray(city)) {
       const firstCity = city.find((item) => this.cleanGaodeText(item));
       return (
-        this.cleanGaodeText(firstCity)
-        ?? this.cleanGaodeText(district)
-        ?? this.cleanGaodeText(province)
-        ?? this.cleanGaodeText(fallbackName)
+        this.cleanGaodeText(firstCity) ??
+        this.cleanGaodeText(district) ??
+        this.cleanGaodeText(province) ??
+        this.cleanGaodeText(fallbackName)
       );
     }
 
     return (
-      this.cleanGaodeText(city)
-      ?? this.cleanGaodeText(district)
-      ?? this.cleanGaodeText(province)
-      ?? this.cleanGaodeText(fallbackName)
+      this.cleanGaodeText(city) ??
+      this.cleanGaodeText(district) ??
+      this.cleanGaodeText(province) ??
+      this.cleanGaodeText(fallbackName)
     );
   }
 
@@ -713,10 +748,13 @@ export class WeatherProvider {
   }
 
   private normalizeComparableName(value?: string) {
-    return value?.trim().replace(/\s+/g, '').replace(
-      /(特别行政区|自治州|自治县|自治区|市辖区|新区|开发区|街道办事处|街道|城区|地区|盟|州|区|县|旗|镇|乡|市)$/u,
-      '',
-    );
+    return value
+      ?.trim()
+      .replace(/\s+/g, '')
+      .replace(
+        /(特别行政区|自治州|自治县|自治区|市辖区|新区|开发区|街道办事处|街道|城区|地区|盟|州|区|县|旗|镇|乡|市)$/u,
+        '',
+      );
   }
 
   private parseGaodeLocation(location?: string) {

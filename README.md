@@ -1,31 +1,43 @@
 # 小慕天气后端项目
 
+![NestJS](https://img.shields.io/badge/NestJS-11.0.1-e0234e?style=for-the-badge&logo=nestjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.7.3-3178c6?style=for-the-badge&logo=typescript&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-6.17.1-2d3748?style=for-the-badge&logo=prisma&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.x-4479a1?style=for-the-badge&logo=mysql&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-jsonwebtoken%209.0.3-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
+![Swagger](https://img.shields.io/badge/Swagger-11.2.7-85ea2d?style=for-the-badge&logo=swagger&logoColor=1f2937)
+![Jest](https://img.shields.io/badge/Jest-30.0.0-c21325?style=for-the-badge&logo=jest&logoColor=white)
+![class-validator](https://img.shields.io/badge/class--validator-0.14.2-ef4444?style=for-the-badge&logo=typescript&logoColor=white)
+
 ## 项目简介
 
 `weather-backend` 是“小慕天气”系统的后端服务，基于 `NestJS + Prisma + MySQL` 构建，当前已从早期联调版演进为具备认证、用户资料、城市管理、用户城市、真实天气拉取与缓存能力的毕业设计后端。项目同时提供 Swagger 文档，便于前后端联调与答辩展示。
 
 ## 技术栈
 
-- `NestJS`
-- `TypeScript`
-- `Prisma`
-- `MySQL`
-- `class-validator`
-- `class-transformer`
-- `bcryptjs`
-- `jsonwebtoken`
-- `Swagger`
-- `Jest`
+| 技术栈 | 当前版本 | 主要作用 |
+|------|------|------|
+| `NestJS` | `11.0.1` | 提供模块化后端框架、控制器与依赖注入能力 |
+| `TypeScript` | `5.7.3` | 提供后端类型约束与服务层接口定义 |
+| `Prisma / @prisma/client` | `6.17.1` | 管理数据库模型、查询访问与 Prisma Client 生成 |
+| `MySQL` | `8.x` | 承载用户、城市、用户城市、天气快照等业务数据 |
+| `class-validator` | `0.14.2` | 校验 DTO 请求参数 |
+| `class-transformer` | `0.5.1` | 配合 DTO 与 Nest 管道做请求体转换 |
+| `bcryptjs` | `3.0.3` | 处理用户密码哈希与校验 |
+| `jsonwebtoken` | `9.0.3` | 签发与校验 Access Token / Refresh Token |
+| `@nestjs/swagger` | `11.2.7` | 生成 Swagger 接口文档，便于联调与展示 |
+| `Jest` | `30.0.0` | 承担服务层、控制器与模块级测试 |
 
 ## 当前能力
 
 - 用户注册、登录、刷新令牌、登出
 - 基于 `Bearer Token` 的受保护接口访问
+- 可选鉴权能力：同一接口可按是否携带有效 Bearer token 自动切换匿名 / 登录用户语义
 - 个人资料查询与更新
 - 头像上传与静态资源访问
 - 登录记录写入与查询
 - 城市基础信息查询与维护
-- 用户关注城市列表维护、默认城市设置
+- 用户关注城市列表维护、默认城市设置与排序语义维护
 - 真实天气数据拉取：
   - 当前天气
   - 小时级预报
@@ -139,10 +151,10 @@ npm run prisma:migrate
 
 ### 城市与用户城市
 
-- `GET /cities?keyword=`：查询城市基础信息
-- `POST /cities`：新增城市
+- `GET /cities?keyword=`：匿名时查询公共城市基础信息；登录后无 `keyword` 时返回当前用户城市列表，带 `keyword` 时继续走全局搜索
+- `POST /cities`：匿名时新增公共城市；登录后将目标城市加入当前用户城市列表
 - `PUT /cities/:cityName`：修改城市名称
-- `DELETE /cities/:cityName`：删除城市
+- `DELETE /cities/:cityName`：匿名时删除公共城市；登录后仅移除当前用户城市关联
 - `GET /user/cities`：查询当前用户关注城市列表
 - `POST /user/cities`：添加当前用户关注城市
 - `PUT /user/cities/:cityId/default`：设置默认城市
@@ -195,30 +207,37 @@ weather-backend/
 │  │  ├─ auth.types.ts             TokenPayload、AuthUser、LoginContext 类型定义
 │  │  ├─ auth-token.service.ts     JWT 签发与校验（jsonwebtoken）
 │  │  ├─ auth.guard.ts             Bearer token 守卫，解析 AccessToken 并查库
+│  │  ├─ optional-auth.guard.ts    可选鉴权守卫，兼容匿名与登录态分流接口
 │  │  ├─ current-user.decorator.ts @CurrentUser() 参数装饰器
 │  │  ├─ auth.service.ts           注册、登录、刷新、注销、资料、头像、登录记录
 │  │  ├─ auth.controller.ts        /auth 路由
-│  │  ├─ auth.module.ts            模块声明，导出 AuthGuard、AuthTokenService
+│  │  ├─ auth.module.ts            模块声明，导出 AuthGuard、OptionalAuthGuard、AuthTokenService
 │  │  ├─ auth.service.spec.ts      AuthService 单元测试（11 个用例）
-│  │  └─ auth.controller.spec.ts   AuthController 单元测试
+│  │  ├─ auth.controller.spec.ts   AuthController 单元测试
+│  │  └─ optional-auth.guard.spec.ts  OptionalAuthGuard 单元测试
 │  ├─ cities/                      城市模块
 │  │  ├─ dto/
 │  │  │  ├─ create-city.dto.ts     新增城市请求体
 │  │  │  ├─ update-city.dto.ts     重命名城市请求体
 │  │  │  └─ add-user-city.dto.ts   添加用户城市请求体
-│  │  ├─ city-seed.ts              启动时写入数据库的 34 个中国城市初始数据
-│  │  ├─ cities.service.ts         城市 CRUD（DB 持久化，启动时自动 seed）
-│  │  ├─ cities.controller.ts      /cities 路由
+│  │  ├─ city-seed.ts              启动时写入数据库的城市初始数据
+│  │  ├─ city-resolver.service.ts  城市解析与标准化服务
+│  │  ├─ cities.service.ts         公共城市 CRUD、种子修复与天气摘要聚合
+│  │  ├─ cities.controller.ts      /cities 路由（按登录态自适应公共 / 用户列表语义）
 │  │  ├─ user-cities.service.ts    用户城市关联增删改、默认城市设置
 │  │  ├─ user-cities.controller.ts /user/cities 路由（全部需要 Bearer 认证）
 │  │  ├─ cities.module.ts          模块声明，导入 WeatherModule、AuthModule
+│  │  ├─ cities.controller.spec.ts CitiesController 单元测试
 │  │  ├─ cities.service.spec.ts    CitiesService 单元测试
 │  │  └─ user-cities.service.spec.ts  UserCitiesService 单元测试
 │  ├─ weather/                     天气模块
+│  │  ├─ reverse-geocode.types.ts  逆地理编码结果类型定义
 │  │  ├─ weather.types.ts          WeatherCurrent、WeatherHourlyItem 等类型定义
 │  │  ├─ weather.provider.ts       对接 Open-Meteo API，负责实际网络请求与城市解析
+│  │  ├─ weather.provider.spec.ts  WeatherProvider 单元测试
 │  │  ├─ weather.service.ts        快照缓存逻辑：优先命中 DB，过期后重新拉取
 │  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily）
+│  │  ├─ weather.controller.spec.ts WeatherController 单元测试
 │  │  ├─ weather.module.ts         模块声明，导出 WeatherService、WeatherProvider
 │  │  └─ weather.service.spec.ts   WeatherService 单元测试
 │  ├─ common/
@@ -245,13 +264,23 @@ weather-backend/
 
 `AuthGuard` 作为可复用守卫，在请求头中提取 Bearer token，校验后从数据库加载完整用户对象挂载到 `request.user`，供 `@CurrentUser()` 装饰器取用。
 
+当前还补充了 `OptionalAuthGuard`，用于 `/cities` 这类既要兼容匿名访问、又要在登录时读取用户上下文的接口：没有凭证时直接放行，有合法凭证时挂载用户信息，有非法或过期凭证时继续返回 401。
+
 密码方面支持双重兼容：存量 SHA-256 密码在登录时自动升级为 bcrypt，无需用户感知。
 
 ### cities 模块
 
-城市数据持久化到 `City` 表，服务启动时通过 `city-seed.ts` 的 34 个初始城市数据执行 `createMany + skipDuplicates`，保证幂等。`CitiesService` 在返回城市列表时，会为每个城市异步拉取天气摘要（`getCitySummary`）一并返回，方便前端直接渲染。
+城市数据持久化到 `City` 表，服务启动时通过 `city-seed.ts` 的初始城市数据执行 `createMany + skipDuplicates`，并在启动阶段自动修复种子城市的坐标/编码异常。`CitiesService` 在返回城市列表时，会为每个城市异步拉取天气摘要（`getCitySummary`）一并返回，方便前端直接渲染。
 
-`UserCitiesService` 维护 `UserCity` 关联表，支持添加、删除、设置默认城市，以及在删除后自动将下一个城市提升为默认。
+`CityResolverService` 负责把用户输入的城市名称解析成可入库的标准城市元数据，统一服务于新增城市、修复坐标和用户城市接入流程。
+
+`UserCitiesService` 维护 `UserCity` 关联表，支持添加、删除、设置默认城市、维持默认城市优先顺序，并在删除后自动将下一个城市提升为默认。
+
+当前 `/cities` 已与用户城市能力打通：
+
+- 匿名访问 `/cities` 时返回公共城市列表
+- 登录后无 `keyword` 拉取 `/cities` 时返回当前账号自己的城市列表
+- 登录后 `POST /cities` / `DELETE /cities/:cityName` 时优先操作当前用户与城市的关联，而不是直接影响所有用户共享数据
 
 ### weather 模块
 
@@ -279,21 +308,21 @@ weather-backend/
 
 ### 城市与用户城市
 
-- **城市管理接口鉴权**：`POST /cities`、`PUT /cities/:cityName`、`DELETE /cities/:cityName` 目前对所有请求开放，可在 `CitiesController` 上加入基于角色（`role` 字段）的 `RolesGuard`，限制只有管理员才能增删改城市。
+- **城市管理权限分层**：当前 `/cities` 已支持按登录态自动分流，后续可继续把公共城市维护（重命名、全局删除）升级为管理员权限，避免普通用户误操作全局城市数据。
 - **城市排序调整**：`UserCity` 表已有 `sortOrder` 字段，可新增 `PATCH /user/cities/order` 接口，接收城市 ID 顺序数组并批量更新 `sortOrder`。
-- **城市搜索增强**：当前通过 `cityName LIKE` 模糊匹配，可扩展为同时匹配 `province`、`cityCode`，或集成全文索引。
+- **城市搜索增强**：当前通过 `cityName LIKE` 模糊匹配，可扩展为同时匹配 `province`、`cityCode`，或接入更强的地理搜索能力。
 
 ### 天气数据
 
-- **多 Provider 支持**：`WeatherProvider` 当前硬编码 Open-Meteo，可将其抽象为 `IWeatherProvider` 接口，再提供 `AccuWeatherProvider`、`QWeatherProvider` 等实现，在 `weather.module.ts` 中通过配置项动态注入不同 provider。
+- **多 Provider 支持**：`WeatherProvider` 当前默认以 Open-Meteo 为主，可进一步抽象为多 Provider 注入模式，支持更多天气源切换。
 - **天气预警推送**：引入 `Bull` 或 `BullMQ` 队列，定时扫描用户默认城市的天气快照，当天气码匹配恶劣天气条件时通过 WebSocket 或 Server-Sent Events 通知已连接的前端。
-- **精细缓存失效**：当前以固定分钟数过期，可改为在城市坐标变更或 provider 返回数据出错时主动 invalidate，减少陈旧数据的展示窗口。
-- **历史天气**：Open-Meteo 提供历史数据接口，可扩展 `WeatherSnapshot` 或新增 `WeatherHistory` 表存储历史记录，对外暴露 `GET /weather/history?cityId=&date=` 接口。
+- **精细缓存失效**：当前以固定分钟数过期，可改为在城市坐标变更或 provider 返回数据出错时主动失效，减少陈旧数据展示窗口。
+- **历史天气**：可扩展 `WeatherSnapshot` 或新增 `WeatherHistory` 表，对外暴露按日期查询的历史天气接口。
 
 ### 性能与可靠性
 
 - **Redis 缓存层**：将天气快照的热点数据同步写入 Redis，查询时优先命中内存缓存，降低 MySQL 查询压力。接入 `@nestjs/cache-manager` + `cache-manager-ioredis` 即可。
-- **异步天气预热**：可在用户添加城市（`POST /user/cities`）时，将城市 ID 推入 Bull 队列，后台异步拉取天气并写入快照，而不是在请求路径上同步拉取。
+- **异步天气预热**：可在用户添加城市（`POST /user/cities` 或登录态 `POST /cities`）时，将城市 ID 推入队列，后台异步拉取天气并写入快照，而不是在请求路径上同步拉取。
 
 ### 可观测性
 
@@ -305,7 +334,7 @@ weather-backend/
 
 - **Docker 化**：编写 `Dockerfile` 和 `docker-compose.yml`，将应用与 MySQL 一并容器化，一键启动完整开发环境。
 - **API 版本管理**：通过 `app.setGlobalPrefix('api/v1')` 或 NestJS 内置版本控制，为未来的破坏性变更预留升级通道。
-- **E2E 测试**：利用 `@nestjs/testing` + `supertest` 搭建真实数据库测试环境，覆盖登录→刷新→注销、添加城市→查看天气等完整流程。
+- **E2E 测试**：利用 `@nestjs/testing` + `supertest` 搭建真实数据库测试环境，覆盖登录→切换账号→拉取用户城市列表、添加城市→查看天气等完整流程。
 
 ## 联调说明
 
