@@ -32,15 +32,27 @@ const createTokenServiceMock = () => ({
   verifyRefreshToken: jest.fn(),
 });
 
+const createLoginGeoServiceMock = () => ({
+  resolveLoginAddress: jest.fn(async (ipAddress?: string) =>
+    ipAddress ? `网络节点 ${ipAddress}` : '本地网络 / 开发环境',
+  ),
+});
+
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: ReturnType<typeof createPrismaMock>;
   let authTokenService: ReturnType<typeof createTokenServiceMock>;
+  let loginGeoService: ReturnType<typeof createLoginGeoServiceMock>;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     authTokenService = createTokenServiceMock();
-    service = new AuthService(prisma as never, authTokenService as never);
+    loginGeoService = createLoginGeoServiceMock();
+    service = new AuthService(
+      prisma as never,
+      authTokenService as never,
+      loginGeoService as never,
+    );
   });
 
   it('should register a new account', async () => {
@@ -109,8 +121,100 @@ describe('AuthService', () => {
     expect(result.data.token).toBe('access-token');
     expect(result.data.accessToken).toBe('access-token');
     expect(result.data.refreshToken).toBe('refresh-token');
-    expect(prisma.loginRecord.create).toHaveBeenCalled();
+    expect(loginGeoService.resolveLoginAddress).toHaveBeenCalledWith(
+      '192.168.1.8',
+    );
+    expect(prisma.loginRecord.create).toHaveBeenCalledWith({
+      data: {
+        account: 'login-user@weather.com',
+        loginAddress: '网络节点 192.168.1.8',
+        loginDevice: 'Chrome/135.0.0.0 / Windows NT 10.0',
+        userId: 'user-1',
+      },
+    });
     expect(prisma.refreshToken.create).toHaveBeenCalled();
+  });
+
+  it('should record local loopback login address when geo resolver marks dev environment', async () => {
+    loginGeoService.resolveLoginAddress.mockResolvedValue('本地网络 / 开发环境');
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'user-local',
+      email: 'local@weather.com',
+      passwordHash: await hash('123456', 10),
+      nickname: '本地用户',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+    prisma.loginRecord.create.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    await service.login(
+      { email: 'local@weather.com', password: '123456' },
+      { ipAddress: '127.0.0.1' },
+    );
+
+    expect(prisma.loginRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        loginAddress: '本地网络 / 开发环境',
+      }),
+    });
+  });
+
+  it('should persist enhanced geo address for public ip lookups', async () => {
+    loginGeoService.resolveLoginAddress.mockResolvedValue('武汉市 / 湖北省 / 湖北电信');
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'user-public',
+      email: 'public@weather.com',
+      passwordHash: await hash('123456', 10),
+      nickname: '公网用户',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+    prisma.loginRecord.create.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    await service.login(
+      { email: 'public@weather.com', password: '123456' },
+      { ipAddress: '8.8.8.8' },
+    );
+
+    expect(prisma.loginRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        loginAddress: '武汉市 / 湖北省 / 湖北电信',
+      }),
+    });
+  });
+
+  it('should keep login success when geo lookup falls back to network node', async () => {
+    loginGeoService.resolveLoginAddress.mockResolvedValue('网络节点 8.8.8.8');
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'user-fallback',
+      email: 'fallback@weather.com',
+      passwordHash: await hash('123456', 10),
+      nickname: '降级用户',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+    prisma.loginRecord.create.mockResolvedValue({});
+    prisma.refreshToken.create.mockResolvedValue({});
+
+    const result = await service.login(
+      { email: 'fallback@weather.com', password: '123456' },
+      { ipAddress: '8.8.8.8' },
+    );
+
+    expect(result.code).toBe(0);
+    expect(prisma.loginRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        loginAddress: '网络节点 8.8.8.8',
+      }),
+    });
   });
 
   it('should login with legacy sha256 password and upgrade it to bcrypt', async () => {

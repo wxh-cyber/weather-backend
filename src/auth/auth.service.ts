@@ -17,6 +17,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { LoginGeoService } from './login-geo.service';
 import type { AuthUser, LoginContext } from './auth.types';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class AuthService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authTokenService: AuthTokenService,
+    private readonly loginGeoService: LoginGeoService,
   ) {}
 
   async onModuleInit() {
@@ -78,7 +80,9 @@ export class AuthService implements OnModuleInit {
       await this.prisma.loginRecord.create({
         data: {
           account: user.email,
-          loginAddress: this.resolveLoginAddress(context.ipAddress),
+          loginAddress: await this.loginGeoService.resolveLoginAddress(
+            context.ipAddress,
+          ),
           loginDevice: this.resolveLoginDevice(context.userAgent),
           userId: user.userId,
         },
@@ -389,18 +393,6 @@ export class AuthService implements OnModuleInit {
       loginAddress: record.loginAddress,
       loginDevice: record.loginDevice,
     };
-  }
-
-  private resolveLoginAddress(ipAddress?: string) {
-    if (
-      !ipAddress ||
-      ipAddress === '::1' ||
-      ipAddress === '127.0.0.1' ||
-      ipAddress === '::ffff:127.0.0.1'
-    ) {
-      return '本地网络 / 开发环境';
-    }
-    return `网络节点 ${ipAddress}`;
   }
 
   private resolveLoginDevice(userAgent?: string) {
