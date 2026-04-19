@@ -95,6 +95,23 @@ describe('WeatherService', () => {
     expect(result.data.displayName).toContain('武汉市');
   });
 
+  it('should return fallback reverse geocode payload when provider resolves without gaode', async () => {
+    provider.reverseGeocode.mockResolvedValue({
+      displayName: '上海市 · 黄浦区 · 中山东一路',
+      city: '上海市',
+      province: '上海市',
+      district: '黄浦区',
+      latitude: 31.2304,
+      longitude: 121.4737,
+    });
+
+    const result = await service.reverseGeocode(31.2304, 121.4737);
+
+    expect(result.code).toBe(0);
+    expect(result.message).toBe('地点名称解析成功');
+    expect(result.data.displayName).toBe('上海市 · 黄浦区 · 中山东一路');
+  });
+
   it('should return empty display name when reverse geocode has no match', async () => {
     provider.reverseGeocode.mockResolvedValue(null);
 

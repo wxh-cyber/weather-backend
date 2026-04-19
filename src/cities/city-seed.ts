@@ -169,6 +169,14 @@ export const CITY_SEED_DATA: SeedCity[] = [
     longitude: 113.2644,
   },
   {
+    cityName: '东莞市',
+    cityCode: '441900',
+    province: '广东省',
+    country: '中国',
+    latitude: 23.0207,
+    longitude: 113.7518,
+  },
+  {
     cityName: '南宁市',
     cityCode: '450100',
     province: '广西壮族自治区',

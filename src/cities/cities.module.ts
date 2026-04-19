@@ -5,11 +5,12 @@ import { WeatherModule } from '../weather/weather.module';
 import { AuthModule } from '../auth/auth.module';
 import { UserCitiesController } from './user-cities.controller';
 import { UserCitiesService } from './user-cities.service';
+import { CityResolverService } from './city-resolver.service';
 
 @Module({
   imports: [WeatherModule, AuthModule],
   controllers: [CitiesController, UserCitiesController],
-  providers: [CitiesService, UserCitiesService],
-  exports: [CitiesService, UserCitiesService],
+  providers: [CitiesService, UserCitiesService, CityResolverService],
+  exports: [CitiesService, UserCitiesService, CityResolverService],
 })
 export class CitiesModule {}

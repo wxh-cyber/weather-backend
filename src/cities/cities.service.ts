@@ -7,20 +7,21 @@ import {
 } from '@nestjs/common';
 import type { City } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { WeatherProvider } from '../weather/weather.provider';
 import { WeatherService } from '../weather/weather.service';
 import { CITY_SEED_DATA } from './city-seed';
+import { CityResolverService } from './city-resolver.service';
 
 @Injectable()
 export class CitiesService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly weatherService: WeatherService,
-    private readonly weatherProvider: WeatherProvider,
+    private readonly cityResolver: CityResolverService,
   ) {}
 
   async onModuleInit() {
     await this.seedCities();
+    await this.repairSeedCityCoordinates();
   }
 
   async getCities(keyword?: string) {
@@ -50,22 +51,22 @@ export class CitiesService implements OnModuleInit {
 
   async createCity(cityName: string) {
     const normalizedName = this.normalizeAndValidateCityName(cityName);
+    const resolved = await this.resolveCityMetadataOrThrow(normalizedName);
     const existing = await this.prisma.city.findUnique({
-      where: { cityName: normalizedName },
+      where: { cityName: resolved.cityName },
     });
     if (existing) {
       throw new ConflictException('城市已存在，请勿重复添加');
     }
 
-    const resolved =
-      await this.weatherProvider.resolveCityByName(normalizedName);
     await this.prisma.city.create({
       data: {
-        cityName: normalizedName,
-        province: resolved?.province ?? '',
-        country: resolved?.country ?? '中国',
-        latitude: resolved?.latitude ?? null,
-        longitude: resolved?.longitude ?? null,
+        cityName: resolved.cityName,
+        cityCode: resolved.cityCode ?? null,
+        province: resolved.province ?? '',
+        country: resolved.country ?? '中国',
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
       },
     });
 
@@ -83,23 +84,23 @@ export class CitiesService implements OnModuleInit {
       throw new NotFoundException('未找到待修改的城市');
     }
 
+    const resolved = await this.resolveCityMetadataOrThrow(normalizedNewName);
     const duplicate = await this.prisma.city.findUnique({
-      where: { cityName: normalizedNewName },
+      where: { cityName: resolved.cityName },
     });
     if (duplicate && duplicate.cityId !== source.cityId) {
       throw new ConflictException('目标城市名称已存在');
     }
 
-    const resolved =
-      await this.weatherProvider.resolveCityByName(normalizedNewName);
     await this.prisma.city.update({
       where: { cityId: source.cityId },
       data: {
-        cityName: normalizedNewName,
-        province: resolved?.province ?? source.province,
-        country: resolved?.country ?? source.country,
-        latitude: resolved?.latitude ?? source.latitude,
-        longitude: resolved?.longitude ?? source.longitude,
+        cityName: resolved.cityName,
+        cityCode: resolved.cityCode ?? source.cityCode,
+        province: resolved.province ?? source.province,
+        country: resolved.country ?? source.country,
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
       },
     });
 
@@ -107,10 +108,7 @@ export class CitiesService implements OnModuleInit {
   }
 
   async deleteCity(cityName: string) {
-    const normalizedName = this.normalizeAndValidateCityName(cityName);
-    const city = await this.prisma.city.findUnique({
-      where: { cityName: normalizedName },
-    });
+    const city = await this.getCityByNameOrThrow(cityName);
     if (!city) {
       throw new NotFoundException('未找到待删除的城市');
     }
@@ -122,11 +120,103 @@ export class CitiesService implements OnModuleInit {
     return this.getCities();
   }
 
+  async ensureCityExists(cityName: string) {
+    const normalizedName = this.normalizeAndValidateCityName(cityName);
+    const resolved = await this.resolveCityMetadataOrThrow(normalizedName);
+    const existing = await this.prisma.city.findUnique({
+      where: { cityName: resolved.cityName },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.city.create({
+      data: {
+        cityName: resolved.cityName,
+        cityCode: resolved.cityCode ?? null,
+        province: resolved.province ?? '',
+        country: resolved.country ?? '中国',
+        latitude: resolved.latitude,
+        longitude: resolved.longitude,
+      },
+    });
+  }
+
+  async getCityByNameOrThrow(cityName: string) {
+    const normalizedName = this.normalizeAndValidateCityName(cityName);
+    const city = await this.prisma.city.findUnique({
+      where: { cityName: normalizedName },
+    });
+    if (!city) {
+      throw new NotFoundException('未找到待删除的城市');
+    }
+
+    return city;
+  }
+
   private async seedCities() {
     await this.prisma.city.createMany({
       data: CITY_SEED_DATA,
       skipDuplicates: true,
     });
+  }
+
+  private async repairSeedCityCoordinates() {
+    for (const seedCity of CITY_SEED_DATA) {
+      const existing = await this.prisma.city.findUnique({
+        where: { cityName: seedCity.cityName },
+      });
+      if (!existing) {
+        continue;
+      }
+
+      const shouldRepair =
+        existing.cityCode !== seedCity.cityCode ||
+        existing.country !== seedCity.country ||
+        existing.province !== seedCity.province ||
+        existing.latitude !== seedCity.latitude ||
+        existing.longitude !== seedCity.longitude;
+      if (!shouldRepair) {
+        continue;
+      }
+
+      await this.prisma.city.update({
+        where: { cityId: existing.cityId },
+        data: {
+          cityCode: seedCity.cityCode,
+          province: seedCity.province,
+          country: seedCity.country,
+          latitude: seedCity.latitude,
+          longitude: seedCity.longitude,
+        },
+      });
+    }
+
+    const unresolvedCities = await this.prisma.city.findMany({
+      where: {
+        OR: [{ latitude: null }, { longitude: null }],
+      },
+    });
+
+    for (const city of unresolvedCities) {
+      const resolved = await this.cityResolver.resolveCityMetadata(city.cityName);
+      if (!resolved) {
+        continue;
+      }
+
+      const nextCityName = await this.resolveRepairCityName(city, resolved.cityName);
+      await this.prisma.city.update({
+        where: { cityId: city.cityId },
+        data: {
+          cityName: nextCityName,
+          cityCode: resolved.cityCode ?? city.cityCode,
+          province: resolved.province ?? city.province,
+          country: resolved.country ?? city.country,
+          latitude: resolved.latitude,
+          longitude: resolved.longitude,
+        },
+      });
+    }
   }
 
   private normalizeKeyword(keyword?: string) {
@@ -139,6 +229,27 @@ export class CitiesService implements OnModuleInit {
       throw new BadRequestException('城市名称不能为空');
     }
     return normalizedName;
+  }
+
+  private async resolveCityMetadataOrThrow(cityName: string) {
+    const resolved = await this.cityResolver.resolveCityMetadata(cityName);
+    if (!resolved) {
+      throw new NotFoundException('未找到可用于地图定位的地点，请输入更完整的名称');
+    }
+
+    return resolved;
+  }
+
+  private async resolveRepairCityName(city: City, resolvedCityName: string) {
+    if (city.cityName === resolvedCityName) {
+      return city.cityName;
+    }
+
+    const duplicate = await this.prisma.city.findUnique({
+      where: { cityName: resolvedCityName },
+    });
+
+    return duplicate ? city.cityName : resolvedCityName;
   }
 
   private async toCityListItem(city: City) {
