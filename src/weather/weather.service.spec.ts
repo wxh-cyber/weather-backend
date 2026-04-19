@@ -36,6 +36,7 @@ const createProviderMock = () => ({
     source: 'open-meteo',
   })),
   resolveCityByName: jest.fn(),
+  reverseGeocode: jest.fn(),
 });
 
 describe('WeatherService', () => {
@@ -75,5 +76,31 @@ describe('WeatherService', () => {
     await expect(service.getCurrentWeather('missing-city')).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it('should return reverse geocode payload when provider resolves a place', async () => {
+    provider.reverseGeocode.mockResolvedValue({
+      displayName: '湖北省 · 武汉市 · 洪山区 · 光谷广场',
+      city: '武汉市',
+      province: '湖北省',
+      district: '洪山区',
+      latitude: 30.5121,
+      longitude: 114.4128,
+    });
+
+    const result = await service.reverseGeocode(30.5121, 114.4128);
+
+    expect(provider.reverseGeocode).toHaveBeenCalledWith(30.5121, 114.4128);
+    expect(result.code).toBe(0);
+    expect(result.data.displayName).toContain('武汉市');
+  });
+
+  it('should return empty display name when reverse geocode has no match', async () => {
+    provider.reverseGeocode.mockResolvedValue(null);
+
+    const result = await service.reverseGeocode(30.5121, 114.4128);
+
+    expect(result.code).toBe(0);
+    expect(result.data.displayName).toBe('');
   });
 });

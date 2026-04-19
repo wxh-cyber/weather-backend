@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { ReverseGeocodeResult } from './reverse-geocode.types';
 import type {
   CityMetadata,
   WeatherDailyItem,
@@ -34,6 +35,40 @@ type OpenMeteoGeocodingResponse = {
     latitude: number;
     longitude: number;
   }>;
+};
+
+type GaodeRegeoResponse = {
+  status?: string;
+  info?: string;
+  regeocode?: {
+    formatted_address?: string;
+    addressComponent?: {
+      country?: string;
+      province?: string;
+      city?: string | string[];
+      district?: string;
+      township?: string;
+      neighborhood?: {
+        name?: string;
+      };
+      building?: {
+        name?: string;
+      };
+      streetNumber?: {
+        street?: string;
+        number?: string;
+      };
+    };
+    pois?: Array<{
+      name?: string;
+    }>;
+    aois?: Array<{
+      name?: string;
+    }>;
+    roads?: Array<{
+      name?: string;
+    }>;
+  };
 };
 
 @Injectable()
@@ -139,6 +174,156 @@ export class WeatherProvider {
       latitude: result.latitude,
       longitude: result.longitude,
     };
+  }
+
+  async reverseGeocode(
+    latitude: number,
+    longitude: number,
+  ): Promise<ReverseGeocodeResult | null> {
+    const provider = this.configService.get<string>(
+      'WEATHER_REVERSE_GEOCODING_PROVIDER',
+      'gaode',
+    );
+    if (provider !== 'gaode') {
+      return null;
+    }
+
+    return this.reverseGeocodeWithGaode(latitude, longitude);
+  }
+
+  private async reverseGeocodeWithGaode(
+    latitude: number,
+    longitude: number,
+  ): Promise<ReverseGeocodeResult | null> {
+    const reverseGeocodingBaseUrl = this.configService.get<string>(
+      'WEATHER_REVERSE_GEOCODING_BASE_URL',
+      'https://restapi.amap.com/v3/geocode/regeo',
+    );
+    const timeoutMs = this.configService.get<number>(
+      'WEATHER_REVERSE_GEOCODING_TIMEOUT_MS',
+      2500,
+    );
+    const apiKey = this.configService.get<string>(
+      'WEATHER_REVERSE_GEOCODING_API_KEY',
+      '',
+    );
+    if (!apiKey) {
+      return null;
+    }
+
+    const url = new URL(reverseGeocodingBaseUrl);
+    url.searchParams.set('location', `${longitude},${latitude}`);
+    url.searchParams.set('key', apiKey);
+    url.searchParams.set('extensions', 'all');
+    url.searchParams.set('radius', '1000');
+    url.searchParams.set('roadlevel', '0');
+    url.searchParams.set('output', 'json');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        return null;
+      }
+
+      const payload = (await response.json()) as GaodeRegeoResponse;
+      if (payload.status !== '1' || !payload.regeocode?.addressComponent) {
+        return null;
+      }
+
+      const component = payload.regeocode.addressComponent;
+      const province = this.cleanGaodeText(component.province);
+      const city = this.normalizeGaodeCity(component.city, province);
+      const district = this.cleanGaodeText(component.district);
+      const township = this.cleanGaodeText(component.township);
+      const poiName = this.cleanGaodeText(payload.regeocode.pois?.[0]?.name);
+      const aoiName = this.cleanGaodeText(payload.regeocode.aois?.[0]?.name);
+      const neighborhoodName = this.cleanGaodeText(
+        component.neighborhood?.name,
+      );
+      const buildingName = this.cleanGaodeText(component.building?.name);
+      const streetName = this.joinStreetNumber(
+        component.streetNumber?.street,
+        component.streetNumber?.number,
+      );
+      const roadName = this.cleanGaodeText(payload.regeocode.roads?.[0]?.name);
+      const name =
+        poiName ??
+        aoiName ??
+        buildingName ??
+        neighborhoodName ??
+        streetName ??
+        roadName;
+      const displayName = this.buildDisplayName([
+        province,
+        city,
+        district,
+        township,
+        name,
+      ]);
+
+      if (!displayName) {
+        return null;
+      }
+
+      return {
+        displayName,
+        name,
+        township,
+        district,
+        city,
+        province,
+        country: this.cleanGaodeText(component.country) ?? '中国',
+        latitude,
+        longitude,
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private normalizeGaodeCity(
+    city: string | string[] | undefined,
+    province?: string,
+  ) {
+    if (Array.isArray(city)) {
+      const firstCity = city.find((item) => this.cleanGaodeText(item));
+      return this.cleanGaodeText(firstCity) ?? province;
+    }
+
+    return this.cleanGaodeText(city) ?? province;
+  }
+
+  private cleanGaodeText(value?: string) {
+    const normalized = value?.trim();
+    if (!normalized || normalized === '[]') {
+      return undefined;
+    }
+
+    return normalized;
+  }
+
+  private joinStreetNumber(street?: string, number?: string) {
+    const streetText = this.cleanGaodeText(street);
+    const numberText = this.cleanGaodeText(number);
+    if (!streetText) {
+      return undefined;
+    }
+
+    return `${streetText}${numberText ?? ''}`;
+  }
+
+  private buildDisplayName(segments: Array<string | undefined>) {
+    return [...new Set(segments.filter(Boolean))].join(' · ');
   }
 
   private mapWeatherCode(code: number) {

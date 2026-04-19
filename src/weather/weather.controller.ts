@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
 import { WeatherService } from './weather.service';
 
 @Controller('weather')
@@ -18,5 +18,17 @@ export class WeatherController {
   @Get('daily')
   getDailyWeather(@Query('cityId') cityId: string) {
     return this.weatherService.getDailyWeather(cityId);
+  }
+
+  @Get('reverse-geocode')
+  reverseGeocode(@Query('lat') lat: string, @Query('lng') lng: string) {
+    const latitude = Number(lat);
+    const longitude = Number(lng);
+
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      throw new BadRequestException('经纬度参数不合法');
+    }
+
+    return this.weatherService.reverseGeocode(latitude, longitude);
   }
 }
