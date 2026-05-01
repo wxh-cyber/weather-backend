@@ -119,6 +119,86 @@ npm run start:dev
 - Swagger 文档：`http://localhost:3000/api-docs`
 - 上传资源前缀：`http://localhost:3000/uploads`
 
+## Docker 容器化部署
+
+项目提供了 `Dockerfile` 与 `docker-compose.yml`，可一键启动后端服务与 `MySQL`。
+
+### 1. 准备环境变量
+
+Docker 部署默认会加载 `.env.docker.example`。如果你需要自定义 JWT 密钥、第三方接口地址或其他业务配置，可以再额外准备一个 `.env` 作为覆盖层。
+
+推荐做法：
+
+```bash
+cp .env.docker.example .env
+```
+
+如需保留本地开发配置，也可以手动参考 `.env.docker.example` 补齐 Docker 相关字段。使用 `Docker Compose` 启动时，会自动覆盖以下容器内运行所需变量：
+
+- `DATABASE_URL`：改为连接 Compose 内部的 `mysql` 服务
+- `PORT`：容器监听端口，默认 `3000`
+- `APP_HOST_PORT`：宿主机访问端口，默认 `3001`
+- `UPLOAD_ROOT`：固定为容器内的 `uploads`
+
+如需自定义数据库初始化参数，可在宿主机环境或同目录 `.env` 中额外提供：
+
+```env
+MYSQL_DATABASE=weather_backend
+MYSQL_ROOT_PASSWORD=123456
+```
+
+### 2. 启动容器
+
+```bash
+docker compose up -d --build
+```
+
+首次启动时，应用容器会自动执行：
+
+```bash
+npx prisma generate
+npx prisma migrate deploy
+node dist/main
+```
+
+### 3. 常用命令
+
+```bash
+# 查看容器状态
+docker compose ps
+
+# 实时查看 app 这个服务的控制台输出日志
+# logs:看日志    app:指定只看app这个服务的日志 
+# -f（核心参数）:代表 follow（跟随）。就像 Linux 里的 tail -f，它会一直挂在终端上，实时滚动输出最新的日志，直到你按下 Ctrl + C 退出。
+docker compose logs -f app
+
+# 查看数据库日志
+docker compose logs -f mysql
+
+# 停止并删除当前项目定义的所有容器，同时清理它们之间的网络。
+docker compose down
+
+#  停止、删除容器、网络，并且连同数据卷一起彻底删除！
+docker compose down -v
+```
+
+### 4. 访问地址
+
+- 服务地址：`http://localhost:3001`
+- Swagger 文档：`http://localhost:3001/api-docs`
+- 上传资源前缀：`http://localhost:3001/uploads`
+
+### 5. 持久化说明
+
+- `mysql-data`：持久化 MySQL 数据
+- `uploads-data`：持久化头像与上传资源
+
+### 6. 端口说明
+
+- 后端服务默认映射到宿主机 `3001`
+- 后端服务容器内默认监听 `3000`，宿主机默认映射到 `3001`，避免与本机已运行的后端服务冲突
+- `MySQL` 仅在 Compose 内部网络暴露 `3306`，默认不占用宿主机端口，避免与本机已安装的 MySQL 冲突
+
 ## 常用脚本
 
 ```bash
