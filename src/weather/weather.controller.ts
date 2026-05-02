@@ -20,6 +20,11 @@ export class WeatherController {
     return this.weatherService.getDailyWeather(cityId);
   }
 
+  @Get('daily-detail')
+  getDailyWeatherDetail(@Query('cityId') cityId: string) {
+    return this.weatherService.getDailyWeatherDetail(cityId);
+  }
+
   @Get('reverse-geocode')
   reverseGeocode(@Query('lat') lat: string, @Query('lng') lng: string) {
     const latitude = Number(lat);

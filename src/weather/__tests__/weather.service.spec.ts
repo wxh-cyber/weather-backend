@@ -29,12 +29,43 @@ const createProviderMock = () => ({
         weatherText: '晴',
         temperatureMax: '30°C',
         temperatureMin: '20°C',
+        sunrise: '05:42',
+        sunset: '18:31',
+        dayWeatherText: '晴',
+        nightWeatherText: '多云',
       },
     ],
     fetchedAt: '2026-04-14T06:00:00Z',
     expiresAt: '2099-04-14T06:30:00Z',
     source: 'open-meteo',
   })),
+  buildDailyWeatherDetails: jest.fn(() => [
+    {
+      date: '2026-04-14',
+      temperatureMax: '30°C',
+      temperatureMin: '20°C',
+      sunrise: '05:42',
+      sunset: '18:31',
+      dayWeatherText: '晴',
+      nightWeatherText: '多云',
+      dayMetrics: {
+        feelsLike: '31°C',
+        precipitationProbability: '10%',
+        precipitationAmount: '0.0 mm',
+        airQuality: 'AQI 51',
+        windDirection: '东南',
+        cloudCover: '22%',
+      },
+      nightMetrics: {
+        feelsLike: '23°C',
+        precipitationProbability: '16%',
+        precipitationAmount: '0.2 mm',
+        airQuality: 'AQI 48',
+        windDirection: '东北',
+        cloudCover: '38%',
+      },
+    },
+  ]),
   resolveCityByName: jest.fn(),
   reverseGeocode: jest.fn(),
 });
@@ -119,5 +150,26 @@ describe('WeatherService', () => {
 
     expect(result.code).toBe(0);
     expect(result.data.displayName).toBe('');
+  });
+
+  it('should build daily weather detail payload from snapshot data', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.weatherSnapshot.findUnique.mockResolvedValue(null);
+    prisma.weatherSnapshot.upsert.mockResolvedValue({});
+
+    const result = await service.getDailyWeatherDetail('city-1');
+
+    expect(provider.buildDailyWeatherDetails).toHaveBeenCalled();
+    expect(result.code).toBe(0);
+    expect(result.data.items[0]?.dayMetrics.feelsLike).toBe('31°C');
+    expect(result.data.items[0]?.nightWeatherText).toBe('多云');
   });
 });

@@ -33,9 +33,9 @@ describe('OptionalAuthGuard', () => {
   });
 
   it('should allow anonymous requests without authorization header', async () => {
-    await expect(
-      guard.canActivate(createExecutionContext({})),
-    ).resolves.toBe(true);
+    await expect(guard.canActivate(createExecutionContext({}))).resolves.toBe(
+      true,
+    );
     expect(authTokenService.verifyAccessToken).not.toHaveBeenCalled();
   });
 

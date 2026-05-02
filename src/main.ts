@@ -50,7 +50,9 @@ async function bootstrap() {
   SwaggerModule.setup('api-docs', app, document);
 
   const configuredPort = Number(configService.get<string>('PORT', '3000'));
-  const maxPortRetry = Number(configService.get<string>('PORT_RETRY_COUNT', '5'));
+  const maxPortRetry = Number(
+    configService.get<string>('PORT_RETRY_COUNT', '5'),
+  );
   const basePort = Number.isFinite(configuredPort) ? configuredPort : 3000;
 
   let currentPort = basePort;

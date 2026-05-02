@@ -23,7 +23,10 @@ export class CityResolverService {
       }
     }
 
-    for (const query of this.buildQueryCandidates(normalizedInput, aliasCanonicalName)) {
+    for (const query of this.buildQueryCandidates(
+      normalizedInput,
+      aliasCanonicalName,
+    )) {
       const resolved = await this.weatherProvider.resolveCityByName(query);
       if (!resolved) {
         continue;
@@ -48,10 +51,16 @@ export class CityResolverService {
       aliasCanonicalName,
       cityName,
       strippedName,
-      strippedName && !strippedName.endsWith('市') ? `${strippedName}市` : undefined,
+      strippedName && !strippedName.endsWith('市')
+        ? `${strippedName}市`
+        : undefined,
     ].filter((value): value is string => Boolean(value));
 
-    return [...new Set(normalizedCandidates.map((value) => this.normalizeCityName(value)))];
+    return [
+      ...new Set(
+        normalizedCandidates.map((value) => this.normalizeCityName(value)),
+      ),
+    ];
   }
 
   private findSeedCity(cityName: string): SeedCity | null {
@@ -59,12 +68,16 @@ export class CityResolverService {
     const strippedInput = this.stripAdministrativeSuffix(normalizedInput);
 
     return (
-      CITY_SEED_DATA.find((item) => this.normalizeCityName(item.cityName) === normalizedInput)
-      ?? CITY_SEED_DATA.find(
+      CITY_SEED_DATA.find(
+        (item) => this.normalizeCityName(item.cityName) === normalizedInput,
+      ) ??
+      CITY_SEED_DATA.find(
         (item) =>
-          this.stripAdministrativeSuffix(this.normalizeCityName(item.cityName)) === strippedInput,
-      )
-      ?? null
+          this.stripAdministrativeSuffix(
+            this.normalizeCityName(item.cityName),
+          ) === strippedInput,
+      ) ??
+      null
     );
   }
 
@@ -74,16 +87,20 @@ export class CityResolverService {
 
     for (const group of CITY_ALIAS_GROUPS) {
       const normalizedCanonical = this.normalizeCityName(group.canonicalName);
-      const strippedCanonical = this.stripAdministrativeSuffix(normalizedCanonical);
-      if (normalizedCanonical === normalizedInput || strippedCanonical === strippedInput) {
+      const strippedCanonical =
+        this.stripAdministrativeSuffix(normalizedCanonical);
+      if (
+        normalizedCanonical === normalizedInput ||
+        strippedCanonical === strippedInput
+      ) {
         return group.canonicalName;
       }
 
       for (const alias of group.aliases) {
         const normalizedAlias = this.normalizeCityName(alias);
         if (
-          normalizedAlias === normalizedInput
-          || this.stripAdministrativeSuffix(normalizedAlias) === strippedInput
+          normalizedAlias === normalizedInput ||
+          this.stripAdministrativeSuffix(normalizedAlias) === strippedInput
         ) {
           return group.canonicalName;
         }

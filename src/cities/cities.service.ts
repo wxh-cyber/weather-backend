@@ -199,12 +199,17 @@ export class CitiesService implements OnModuleInit {
     });
 
     for (const city of unresolvedCities) {
-      const resolved = await this.cityResolver.resolveCityMetadata(city.cityName);
+      const resolved = await this.cityResolver.resolveCityMetadata(
+        city.cityName,
+      );
       if (!resolved) {
         continue;
       }
 
-      const nextCityName = await this.resolveRepairCityName(city, resolved.cityName);
+      const nextCityName = await this.resolveRepairCityName(
+        city,
+        resolved.cityName,
+      );
       await this.prisma.city.update({
         where: { cityId: city.cityId },
         data: {
@@ -234,7 +239,9 @@ export class CitiesService implements OnModuleInit {
   private async resolveCityMetadataOrThrow(cityName: string) {
     const resolved = await this.cityResolver.resolveCityMetadata(cityName);
     if (!resolved) {
-      throw new NotFoundException('未找到可用于地图定位的地点，请输入更完整的名称');
+      throw new NotFoundException(
+        '未找到可用于地图定位的地点，请输入更完整的名称',
+      );
     }
 
     return resolved;

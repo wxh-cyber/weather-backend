@@ -13,6 +13,8 @@ import { compare, hash } from 'bcryptjs';
 import type { LoginRecord, RefreshToken, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthTokenService } from './auth-token.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { DestroyAccountDto } from './dto/destroy-account.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -72,7 +74,10 @@ export class AuthService implements OnModuleInit {
       if (!storedUser) {
         throw new NotFoundException('账号未注册');
       }
-      const user = await this.resolveAuthenticatedUser(storedUser, dto.password);
+      const user = await this.resolveAuthenticatedUser(
+        storedUser,
+        dto.password,
+      );
       if (!user) {
         throw new UnauthorizedException('密码错误');
       }
@@ -223,6 +228,84 @@ export class AuthService implements OnModuleInit {
         code: 0,
         message: '保存成功',
         data: this.toProfile(updatedUser),
+      };
+    } catch (error) {
+      this.handlePrismaError(error);
+    }
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { userId },
+      });
+
+      if (!user) {
+        throw new NotFoundException('当前账号不存在');
+      }
+
+      const authenticatedUser = await this.resolveAuthenticatedUser(
+        user,
+        dto.currentPassword,
+      );
+      if (!authenticatedUser) {
+        throw new UnauthorizedException('当前密码错误');
+      }
+
+      const nextPassword = dto.newPassword.trim();
+      if (nextPassword.length < 6) {
+        throw new BadRequestException('新密码长度至少为 6 位');
+      }
+      if (dto.currentPassword === nextPassword) {
+        throw new BadRequestException('新密码不能与当前密码相同');
+      }
+
+      await this.prisma.user.update({
+        where: { userId },
+        data: {
+          passwordHash: await hash(nextPassword, 10),
+        },
+      });
+
+      await this.prisma.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
+
+      return {
+        code: 0,
+        message: '密码修改成功',
+        data: null,
+      };
+    } catch (error) {
+      this.handlePrismaError(error);
+    }
+  }
+
+  async destroyAccount(userId: string, dto: DestroyAccountDto) {
+    try {
+      if (dto.refreshToken?.trim()) {
+        const payload = this.authTokenService.verifyRefreshToken(
+          dto.refreshToken,
+        );
+        if (payload.sub !== userId) {
+          throw new UnauthorizedException('刷新令牌不属于当前用户');
+        }
+      }
+
+      await this.prisma.user.delete({
+        where: { userId },
+      });
+
+      return {
+        code: 0,
+        message: '账号已注销',
+        data: null,
       };
     } catch (error) {
       this.handlePrismaError(error);

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   InternalServerErrorException,
   NotFoundException,
@@ -14,6 +15,7 @@ const createPrismaMock = () => ({
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    delete: jest.fn(),
   },
   loginRecord: {
     create: jest.fn(),
@@ -23,6 +25,7 @@ const createPrismaMock = () => ({
     create: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
   },
 });
 
@@ -136,7 +139,9 @@ describe('AuthService', () => {
   });
 
   it('should record local loopback login address when geo resolver marks dev environment', async () => {
-    loginGeoService.resolveLoginAddress.mockResolvedValue('本地网络 / 开发环境');
+    loginGeoService.resolveLoginAddress.mockResolvedValue(
+      '本地网络 / 开发环境',
+    );
     prisma.user.findUnique.mockResolvedValue({
       userId: 'user-local',
       email: 'local@weather.com',
@@ -163,7 +168,9 @@ describe('AuthService', () => {
   });
 
   it('should persist enhanced geo address for public ip lookups', async () => {
-    loginGeoService.resolveLoginAddress.mockResolvedValue('武汉市 / 湖北省 / 湖北电信');
+    loginGeoService.resolveLoginAddress.mockResolvedValue(
+      '武汉市 / 湖北省 / 湖北电信',
+    );
     prisma.user.findUnique.mockResolvedValue({
       userId: 'user-public',
       email: 'public@weather.com',
@@ -218,7 +225,9 @@ describe('AuthService', () => {
   });
 
   it('should login with legacy sha256 password and upgrade it to bcrypt', async () => {
-    const legacyPasswordHash = createHash('sha256').update('123456').digest('hex');
+    const legacyPasswordHash = createHash('sha256')
+      .update('123456')
+      .digest('hex');
     prisma.user.findUnique.mockResolvedValue({
       userId: 'legacy-user',
       email: 'legacy@weather.com',
@@ -378,6 +387,94 @@ describe('AuthService', () => {
     expect(avatarRes.data.avatarUrl).toBe(
       'http://localhost:3000/uploads/avatars/demo.png',
     );
+  });
+
+  it('should change password and revoke active refresh tokens', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      email: 'demo@weather.com',
+      passwordHash: await hash('123456', 10),
+      nickname: '演示账号',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+    prisma.user.update.mockResolvedValue({});
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 2 });
+
+    const result = await service.changePassword('user-1', {
+      currentPassword: '123456',
+      newPassword: 'newPassword123',
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.message).toBe('密码修改成功');
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+      data: { passwordHash: expect.stringMatching(/^\$2[aby]\$/) },
+    });
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user-1',
+        revokedAt: null,
+      },
+      data: {
+        revokedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('should throw unauthorized when current password is incorrect during password change', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      email: 'demo@weather.com',
+      passwordHash: await hash('123456', 10),
+      nickname: '演示账号',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+
+    await expect(
+      service.changePassword('user-1', {
+        currentPassword: 'wrong-password',
+        newPassword: 'newPassword123',
+      }),
+    ).rejects.toThrow(new UnauthorizedException('当前密码错误'));
+  });
+
+  it('should reject same password during password change', async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      userId: 'user-1',
+      email: 'demo@weather.com',
+      passwordHash: await hash('123456', 10),
+      nickname: '演示账号',
+      phone: '',
+      qq: '',
+      wechat: '',
+      avatarUrl: '',
+    });
+
+    await expect(
+      service.changePassword('user-1', {
+        currentPassword: '123456',
+        newPassword: '123456',
+      }),
+    ).rejects.toThrow(new BadRequestException('新密码不能与当前密码相同'));
+  });
+
+  it('should destroy account by deleting current user', async () => {
+    prisma.user.delete.mockResolvedValue({});
+
+    const result = await service.destroyAccount('user-1', {});
+
+    expect(result.code).toBe(0);
+    expect(result.message).toBe('账号已注销');
+    expect(prisma.user.delete).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+    });
   });
 
   it('should return login records in descending order', async () => {

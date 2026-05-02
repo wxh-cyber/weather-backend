@@ -11,6 +11,13 @@ export type WeatherHourlyItem = {
   time: string;
   temperature: string;
   weatherText: string;
+  apparentTemperature?: string;
+  precipitationProbability?: string;
+  precipitationAmount?: string;
+  cloudCover?: string;
+  windDirection?: string;
+  isDay?: boolean;
+  airQuality?: string;
 };
 
 export type WeatherDailyItem = {
@@ -18,6 +25,38 @@ export type WeatherDailyItem = {
   weatherText: string;
   temperatureMax: string;
   temperatureMin: string;
+  sunrise?: string;
+  sunset?: string;
+  dayWeatherText?: string;
+  nightWeatherText?: string;
+};
+
+export type DayPeriodMetrics = {
+  feelsLike: string;
+  precipitationProbability: string;
+  precipitationAmount: string;
+  airQuality: string;
+  windDirection: string;
+  cloudCover: string;
+};
+
+export type DailyWeatherDetailItem = {
+  date: string;
+  temperatureMax: string;
+  temperatureMin: string;
+  sunrise: string;
+  sunset: string;
+  dayWeatherText: string;
+  nightWeatherText: string;
+  dayMetrics: DayPeriodMetrics;
+  nightMetrics: DayPeriodMetrics;
+};
+
+export type DailyWeatherDetailPayload = {
+  cityId: string;
+  cityName: string;
+  source: string;
+  items: DailyWeatherDetailItem[];
 };
 
 export type WeatherSnapshotPayload = {

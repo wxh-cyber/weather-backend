@@ -10,6 +10,8 @@ const createAuthServiceMock = () => ({
   getProfile: jest.fn(),
   getLoginRecords: jest.fn(),
   updateProfile: jest.fn(),
+  changePassword: jest.fn(),
+  destroyAccount: jest.fn(),
   updateAvatar: jest.fn(),
 });
 
@@ -131,6 +133,68 @@ describe('AuthController', () => {
     const result = controller.getProfile(user);
 
     expect(service.getProfile).toHaveBeenCalledWith(user);
+    expect(result.code).toBe(0);
+  });
+
+  it('should call changePassword and return success payload', async () => {
+    service.changePassword.mockResolvedValue({
+      code: 0,
+      message: '密码修改成功',
+      data: null,
+    });
+
+    const result = await controller.changePassword(
+      {
+        userId: 'user-1',
+        email: 'demo@weather.com',
+        nickname: '演示账号',
+        phone: '',
+        qq: '',
+        wechat: '',
+        avatarUrl: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        currentPassword: '123456',
+        newPassword: 'newPassword123',
+      },
+    );
+
+    expect(service.changePassword).toHaveBeenCalledWith('user-1', {
+      currentPassword: '123456',
+      newPassword: 'newPassword123',
+    });
+    expect(result.code).toBe(0);
+  });
+
+  it('should call destroyAccount and return success payload', async () => {
+    service.destroyAccount.mockResolvedValue({
+      code: 0,
+      message: '账号已注销',
+      data: null,
+    });
+
+    const result = await controller.destroyAccount(
+      {
+        userId: 'user-1',
+        email: 'demo@weather.com',
+        nickname: '演示账号',
+        phone: '',
+        qq: '',
+        wechat: '',
+        avatarUrl: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        refreshToken: 'refresh-token',
+      },
+    );
+
+    expect(service.destroyAccount).toHaveBeenCalledWith('user-1', {
+      refreshToken: 'refresh-token',
+    });
     expect(result.code).toBe(0);
   });
 });

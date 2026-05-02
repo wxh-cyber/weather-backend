@@ -175,7 +175,9 @@ describe('CitiesService', () => {
   it('should reject creation when no resolvable coordinates are found', async () => {
     prisma.city.findUnique.mockResolvedValue(null);
     prisma.city.findMany.mockResolvedValue([]);
-    weatherProvider.resolveCityByName.mockImplementation(() => Promise.resolve(null));
+    weatherProvider.resolveCityByName.mockImplementation(() =>
+      Promise.resolve(null),
+    );
 
     await expect(service.createCity('火星基地')).rejects.toThrow(
       '未找到可用于地图定位的地点，请输入更完整的名称',
@@ -236,65 +238,67 @@ describe('CitiesService', () => {
   });
 
   it('should repair seeded city coordinates on module init when existing data is wrong', async () => {
-    prisma.city.findUnique.mockImplementation(({ where }: { where: { cityName: string } }) => {
-      if (where.cityName === '上海市') {
-        return Promise.resolve({
-          cityId: 'city-sh',
-          cityName: '上海市',
-          cityCode: null,
-          province: '伊利诺伊州',
-          country: '美国',
-          latitude: 41.05087,
-          longitude: -90.4968,
-        });
-      }
+    prisma.city.findUnique.mockImplementation(
+      ({ where }: { where: { cityName: string } }) => {
+        if (where.cityName === '上海市') {
+          return Promise.resolve({
+            cityId: 'city-sh',
+            cityName: '上海市',
+            cityCode: null,
+            province: '伊利诺伊州',
+            country: '美国',
+            latitude: 41.05087,
+            longitude: -90.4968,
+          });
+        }
 
-      if (where.cityName === '广州市') {
+        if (where.cityName === '广州市') {
+          return Promise.resolve({
+            cityId: 'city-gz',
+            cityName: '广州市',
+            cityCode: null,
+            province: '',
+            country: '中国',
+            latitude: null,
+            longitude: null,
+          });
+        }
+
+        if (where.cityName === '东莞市') {
+          return Promise.resolve({
+            cityId: 'city-dg',
+            cityName: '东莞市',
+            cityCode: null,
+            province: '',
+            country: '中国',
+            latitude: null,
+            longitude: null,
+          });
+        }
+
+        if (where.cityName === '虎门') {
+          return Promise.resolve({
+            cityId: 'city-hm',
+            cityName: '虎门',
+            cityCode: null,
+            province: '',
+            country: '中国',
+            latitude: null,
+            longitude: null,
+          });
+        }
+
         return Promise.resolve({
-          cityId: 'city-gz',
-          cityName: '广州市',
-          cityCode: null,
-          province: '',
+          cityId: 'city-ok',
+          cityName: where.cityName,
+          cityCode: 'seed-ok',
+          province: '已修复省份',
           country: '中国',
-          latitude: null,
-          longitude: null,
+          latitude: 30.5928,
+          longitude: 114.3055,
         });
-      }
-
-      if (where.cityName === '东莞市') {
-        return Promise.resolve({
-          cityId: 'city-dg',
-          cityName: '东莞市',
-          cityCode: null,
-          province: '',
-          country: '中国',
-          latitude: null,
-          longitude: null,
-        });
-      }
-
-      if (where.cityName === '虎门') {
-        return Promise.resolve({
-          cityId: 'city-hm',
-          cityName: '虎门',
-          cityCode: null,
-          province: '',
-          country: '中国',
-          latitude: null,
-          longitude: null,
-        });
-      }
-
-      return Promise.resolve({
-        cityId: 'city-ok',
-        cityName: where.cityName,
-        cityCode: 'seed-ok',
-        province: '已修复省份',
-        country: '中国',
-        latitude: 30.5928,
-        longitude: 114.3055,
-      });
-    });
+      },
+    );
     prisma.city.createMany.mockResolvedValue({ count: 0 });
     prisma.city.findMany.mockResolvedValue([
       {

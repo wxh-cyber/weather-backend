@@ -20,6 +20,8 @@ import { AuthService } from './auth.service';
 import { AuthGuard } from './auth.guard';
 import { CurrentUser } from './current-user.decorator';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { DestroyAccountDto } from './dto/destroy-account.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -130,6 +132,24 @@ export class AuthController {
   @Put('profile')
   updateProfile(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto) {
     return this.authService.updateProfile(user.userId, dto);
+  }
+
+  @UseGuards(AuthGuard)
+  @Put('password')
+  changePassword(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.userId, dto);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('destroy')
+  destroyAccount(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DestroyAccountDto,
+  ) {
+    return this.authService.destroyAccount(user.userId, dto);
   }
 
   @UseGuards(AuthGuard)

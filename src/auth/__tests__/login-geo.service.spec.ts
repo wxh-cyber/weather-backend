@@ -76,12 +76,14 @@ describe('LoginGeoService', () => {
   });
 
   it('skips external lookup when geo lookup is disabled', async () => {
-    configService.get.mockImplementation((key: string, defaultValue?: string) => {
-      if (key === 'LOGIN_GEO_LOOKUP_ENABLED') {
-        return 'false';
-      }
-      return defaultValue;
-    });
+    configService.get.mockImplementation(
+      (key: string, defaultValue?: string) => {
+        if (key === 'LOGIN_GEO_LOOKUP_ENABLED') {
+          return 'false';
+        }
+        return defaultValue;
+      },
+    );
     const fetchSpy = jest.spyOn(global, 'fetch');
 
     await expect(service.resolveLoginAddress('8.8.4.4')).resolves.toBe(

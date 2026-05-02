@@ -58,6 +58,42 @@ describe('WeatherProvider.reverseGeocode', () => {
     });
   });
 
+  it('should convert WGS84 click coordinates to GCJ02 before requesting gaode reverse geocode', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: '1',
+        regeocode: {
+          addressComponent: {
+            country: '中国',
+            province: '上海市',
+            city: '上海市',
+            district: '黄浦区',
+          },
+          roads: [{ name: '中山东一路' }],
+        },
+      }),
+    });
+    global.fetch = fetchMock as typeof fetch;
+
+    const provider = new WeatherProvider(
+      createConfigService({
+        WEATHER_REVERSE_GEOCODING_PROVIDER: 'gaode',
+        WEATHER_REVERSE_GEOCODING_BASE_URL:
+          'https://restapi.amap.com/v3/geocode/regeo',
+        WEATHER_REVERSE_GEOCODING_API_KEY: 'demo-key',
+      }),
+    );
+
+    await provider.reverseGeocode(31.2304, 121.4737);
+
+    const requestedUrl = fetchMock.mock.calls[0]?.[0];
+    expect(requestedUrl).toBeInstanceOf(URL);
+    expect((requestedUrl as URL).searchParams.get('location')).not.toBe(
+      '121.4737,31.2304',
+    );
+  });
+
   it('should fall back to administrative name when poi is missing', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
@@ -145,6 +181,9 @@ describe('WeatherProvider.reverseGeocode', () => {
         ok: false,
       })
       .mockResolvedValueOnce({
+        ok: false,
+      })
+      .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           address: {
@@ -173,7 +212,234 @@ describe('WeatherProvider.reverseGeocode', () => {
     const result = await provider.reverseGeocode(23.1291, 113.2644);
 
     expect(result?.displayName).toBe('广东省 · 广州市 · 天河区 · 天河路208号');
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('should build a minimal display name when gaode only returns administrative parts', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: '1',
+        regeocode: {
+          addressComponent: {
+            country: '中国',
+            province: '浙江省',
+            city: '杭州市',
+            district: '西湖区',
+            township: '转塘街道',
+          },
+          pois: [],
+          aois: [],
+          roads: [],
+        },
+      }),
+    }) as typeof fetch;
+
+    const provider = new WeatherProvider(
+      createConfigService({
+        WEATHER_REVERSE_GEOCODING_PROVIDER: 'gaode',
+        WEATHER_REVERSE_GEOCODING_BASE_URL:
+          'https://restapi.amap.com/v3/geocode/regeo',
+        WEATHER_REVERSE_GEOCODING_API_KEY: 'demo-key',
+      }),
+    );
+
+    const result = await provider.reverseGeocode(30.2459, 120.1303);
+
+    expect(result?.displayName).toBe('浙江省 · 杭州市 · 西湖区 · 转塘街道');
+  });
+
+  it('should retry gaode once before falling back when the second attempt succeeds', async () => {
+    global.fetch = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: '1',
+          regeocode: {
+            addressComponent: {
+              country: '中国',
+              province: '湖北省',
+              city: '武汉市',
+              district: '洪山区',
+              township: '关东街道',
+            },
+            pois: [{ name: '光谷广场' }],
+          },
+        }),
+      }) as typeof fetch;
+
+    const provider = new WeatherProvider(
+      createConfigService({
+        WEATHER_REVERSE_GEOCODING_PROVIDER: 'gaode',
+        WEATHER_REVERSE_GEOCODING_BASE_URL:
+          'https://restapi.amap.com/v3/geocode/regeo',
+        WEATHER_REVERSE_GEOCODING_API_KEY: 'demo-key',
+      }),
+    );
+
+    const result = await provider.reverseGeocode(30.5121, 114.4128);
+
+    expect(result?.displayName).toBe(
+      '湖北省 · 武汉市 · 洪山区 · 关东街道 · 光谷广场',
+    );
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('should use nominatim display_name when structured address fields are insufficient', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          name: '',
+          display_name: '中国, 四川省, 成都市, 武侯区',
+        }),
+      }) as typeof fetch;
+
+    const provider = new WeatherProvider(
+      createConfigService({
+        WEATHER_REVERSE_GEOCODING_PROVIDER: 'gaode',
+        WEATHER_REVERSE_GEOCODING_BASE_URL:
+          'https://restapi.amap.com/v3/geocode/regeo',
+        WEATHER_REVERSE_GEOCODING_API_KEY: 'demo-key',
+        WEATHER_REVERSE_GEOCODING_FALLBACK_BASE_URL:
+          'https://nominatim.openstreetmap.org/reverse',
+      }),
+    );
+
+    const result = await provider.reverseGeocode(30.5728, 104.0668);
+
+    expect(result?.displayName).toBe('中国, 四川省, 成都市, 武侯区');
+  });
+
+  it('should return null only when both providers cannot yield any readable name', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: '0',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: '0',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          address: {},
+          display_name: '',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          address: {},
+          display_name: '',
+        }),
+      }) as typeof fetch;
+
+    const provider = new WeatherProvider(
+      createConfigService({
+        WEATHER_REVERSE_GEOCODING_PROVIDER: 'gaode',
+        WEATHER_REVERSE_GEOCODING_BASE_URL:
+          'https://restapi.amap.com/v3/geocode/regeo',
+        WEATHER_REVERSE_GEOCODING_API_KEY: 'demo-key',
+        WEATHER_REVERSE_GEOCODING_FALLBACK_BASE_URL:
+          'https://nominatim.openstreetmap.org/reverse',
+      }),
+    );
+
+    const result = await provider.reverseGeocode(35.0, 110.0);
+
+    expect(result).toBeNull();
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('WeatherProvider.buildDailyWeatherDetails', () => {
+  it('should group snapshot hours into day and night metrics', () => {
+    const provider = new WeatherProvider(createConfigService());
+
+    const result = provider.buildDailyWeatherDetails({
+      current: {
+        weatherText: '晴',
+        temperature: '26°C',
+        observedAt: '2026-05-02T06:00:00+08:00',
+        source: 'open-meteo',
+      },
+      hourly: [
+        {
+          time: '2026-05-02T09:00',
+          temperature: '28°C',
+          weatherText: '晴',
+          apparentTemperature: '30°C',
+          precipitationProbability: '10%',
+          precipitationAmount: '0.0 mm',
+          cloudCover: '20%',
+          windDirection: '135',
+          isDay: true,
+          airQuality: 'AQI 52',
+        },
+        {
+          time: '2026-05-02T21:00',
+          temperature: '22°C',
+          weatherText: '小雨',
+          apparentTemperature: '21°C',
+          precipitationProbability: '40%',
+          precipitationAmount: '1.5 mm',
+          cloudCover: '72%',
+          windDirection: '270',
+          isDay: false,
+          airQuality: 'AQI 44',
+        },
+      ],
+      daily: [
+        {
+          date: '2026-05-02',
+          weatherText: '晴',
+          temperatureMax: '31°C',
+          temperatureMin: '22°C',
+          sunrise: '05:34',
+          sunset: '18:59',
+          dayWeatherText: '晴',
+          nightWeatherText: '小雨',
+        },
+      ],
+      fetchedAt: '2026-05-02T06:00:00+08:00',
+      expiresAt: '2026-05-02T06:30:00+08:00',
+      source: 'open-meteo',
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({
+        date: '2026-05-02',
+        dayWeatherText: '晴',
+        nightWeatherText: '小雨',
+        dayMetrics: expect.objectContaining({
+          feelsLike: '30°C',
+          precipitationProbability: '10%',
+          airQuality: 'AQI 52',
+          windDirection: '东南',
+        }),
+        nightMetrics: expect.objectContaining({
+          precipitationAmount: '1.5 mm',
+          cloudCover: '72%',
+          windDirection: '西',
+        }),
+      }),
+    ]);
   });
 });
 

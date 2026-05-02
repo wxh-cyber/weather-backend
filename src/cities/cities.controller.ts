@@ -39,10 +39,7 @@ export class CitiesController {
 
   @UseGuards(OptionalAuthGuard)
   @Post()
-  async createCity(
-    @Body() dto: CreateCityDto,
-    @CurrentUser() user?: AuthUser,
-  ) {
+  async createCity(@Body() dto: CreateCityDto, @CurrentUser() user?: AuthUser) {
     if (!user) {
       return this.citiesService.createCity(dto.cityName);
     }

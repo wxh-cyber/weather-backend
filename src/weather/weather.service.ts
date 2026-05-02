@@ -8,6 +8,7 @@ import type { City, WeatherSnapshot } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WeatherProvider } from './weather.provider';
 import type {
+  DailyWeatherDetailPayload,
   WeatherCurrent,
   WeatherDailyItem,
   WeatherHourlyItem,
@@ -65,6 +66,22 @@ export class WeatherService {
         source: snapshot.source,
         items: snapshot.daily,
       },
+    };
+  }
+
+  async getDailyWeatherDetail(cityId: string) {
+    const city = await this.getCityOrThrow(cityId);
+    const snapshot = await this.requireSnapshot(city);
+
+    return {
+      code: 0,
+      message: '获取成功',
+      data: {
+        cityId: city.cityId,
+        cityName: city.cityName,
+        source: snapshot.source,
+        items: this.weatherProvider.buildDailyWeatherDetails(snapshot),
+      } satisfies DailyWeatherDetailPayload,
     };
   }
 

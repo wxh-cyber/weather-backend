@@ -87,10 +87,9 @@ describe('CitiesController', () => {
       data: [{ cityName: '武汉市' }],
     });
 
-    const result = await controller.createCity(
-      { cityName: '武汉市' },
-      { userId: 'user-1' } as never,
-    );
+    const result = await controller.createCity({ cityName: '武汉市' }, {
+      userId: 'user-1',
+    } as never);
 
     expect(citiesService.ensureCityExists).toHaveBeenCalledWith('武汉市');
     expect(userCitiesService.addUserCity).toHaveBeenCalledWith(
@@ -128,10 +127,9 @@ describe('CitiesController', () => {
       data: [],
     });
 
-    const result = await controller.deleteCity(
-      '武汉市',
-      { userId: 'user-1' } as never,
-    );
+    const result = await controller.deleteCity('武汉市', {
+      userId: 'user-1',
+    } as never);
 
     expect(citiesService.getCityByNameOrThrow).toHaveBeenCalledWith('武汉市');
     expect(userCitiesService.removeUserCity).toHaveBeenCalledWith(

@@ -76,7 +76,9 @@ export class LoginGeoService {
     );
   }
 
-  private async lookupPublicIpGeo(ipAddress: string): Promise<GeoLookupResult | null> {
+  private async lookupPublicIpGeo(
+    ipAddress: string,
+  ): Promise<GeoLookupResult | null> {
     const lookupEnabled = this.configService.get<string>(
       'LOGIN_GEO_LOOKUP_ENABLED',
       'true',
@@ -101,7 +103,10 @@ export class LoginGeoService {
 
     try {
       const requestUrl = this.buildLookupUrl(baseUrl, ipAddress);
-      const apiKey = this.configService.get<string>('LOGIN_GEO_LOOKUP_API_KEY', '');
+      const apiKey = this.configService.get<string>(
+        'LOGIN_GEO_LOOKUP_API_KEY',
+        '',
+      );
       const response = await fetch(requestUrl, {
         signal: controller.signal,
         headers: {
@@ -124,7 +129,10 @@ export class LoginGeoService {
   }
 
   private buildLookupUrl(baseUrl: string, ipAddress: string) {
-    const apiKey = this.configService.get<string>('LOGIN_GEO_LOOKUP_API_KEY', '');
+    const apiKey = this.configService.get<string>(
+      'LOGIN_GEO_LOOKUP_API_KEY',
+      '',
+    );
     const resolvedBaseUrl = baseUrl.includes('{ip}')
       ? baseUrl.replaceAll('{ip}', encodeURIComponent(ipAddress))
       : baseUrl;
@@ -136,19 +144,25 @@ export class LoginGeoService {
     if (!url.searchParams.has('lang')) {
       url.searchParams.set('lang', 'zh-CN');
     }
-    if (apiKey && !url.searchParams.has('key') && !url.searchParams.has('token')) {
+    if (
+      apiKey &&
+      !url.searchParams.has('key') &&
+      !url.searchParams.has('token')
+    ) {
       url.searchParams.set('key', apiKey);
     }
 
     return url.toString();
   }
 
-  private extractGeoLookupResult(payload: Record<string, unknown>): GeoLookupResult | null {
+  private extractGeoLookupResult(
+    payload: Record<string, unknown>,
+  ): GeoLookupResult | null {
     const data =
-      (this.asRecord(payload.data) ??
-        this.asRecord(payload.result) ??
-        this.asRecord(payload.location) ??
-        payload);
+      this.asRecord(payload.data) ??
+      this.asRecord(payload.result) ??
+      this.asRecord(payload.location) ??
+      payload;
 
     const country = this.pickString(data, [
       'country',
