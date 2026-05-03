@@ -199,7 +199,10 @@ export class WeatherService {
           temperature: fetched.current.temperature,
           currentJson: fetched.current,
           hourlyJson: fetched.hourly,
-          dailyJson: fetched.daily,
+          dailyJson: {
+            daily: fetched.daily,
+            hourlyDetail: fetched.hourlyDetail ?? fetched.hourly,
+          },
           fetchedAt: new Date(fetched.fetchedAt),
           expiresAt: new Date(fetched.expiresAt),
         },
@@ -210,7 +213,10 @@ export class WeatherService {
           temperature: fetched.current.temperature,
           currentJson: fetched.current,
           hourlyJson: fetched.hourly,
-          dailyJson: fetched.daily,
+          dailyJson: {
+            daily: fetched.daily,
+            hourlyDetail: fetched.hourlyDetail ?? fetched.hourly,
+          },
           fetchedAt: new Date(fetched.fetchedAt),
           expiresAt: new Date(fetched.expiresAt),
         },
@@ -235,10 +241,22 @@ export class WeatherService {
   private deserializeSnapshot(
     snapshotRecord: WeatherSnapshot,
   ): WeatherSnapshotPayload {
+    const dailyJson = snapshotRecord.dailyJson as
+      | WeatherDailyItem[]
+      | {
+          daily: WeatherDailyItem[];
+          hourlyDetail?: WeatherHourlyItem[];
+        };
+    const dailyItems = Array.isArray(dailyJson) ? dailyJson : dailyJson.daily;
+    const hourlyDetailItems = Array.isArray(dailyJson)
+      ? undefined
+      : dailyJson.hourlyDetail;
+
     return {
       current: snapshotRecord.currentJson as WeatherSnapshotPayload['current'],
       hourly: snapshotRecord.hourlyJson as WeatherHourlyItem[],
-      daily: snapshotRecord.dailyJson as WeatherDailyItem[],
+      hourlyDetail: hourlyDetailItems,
+      daily: dailyItems,
       fetchedAt: snapshotRecord.fetchedAt.toISOString(),
       expiresAt: snapshotRecord.expiresAt.toISOString(),
       source: snapshotRecord.source,

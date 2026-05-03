@@ -160,6 +160,7 @@ type WeatherHourSlice = {
   precipitationAmount: number | null;
   cloudCover: number | null;
   windDirection: number | null;
+  windDirectionText: string;
   isDay: boolean;
   airQuality: number | null;
 };
@@ -249,9 +250,8 @@ export class WeatherProvider {
         this.configService.get<number>('WEATHER_CACHE_MINUTES', 30) * 60 * 1000,
     ).toISOString();
 
-    const hourly: WeatherHourlyItem[] = hourlyPayload.time
-      .slice(0, 24)
-      .map((time, index) => ({
+    const fullHourly: WeatherHourlyItem[] = hourlyPayload.time.map(
+      (time, index) => ({
         time,
         temperature: `${Math.round(hourlyPayload.temperature_2m[index] ?? 0)}°C`,
         weatherText: this.mapWeatherCode(
@@ -267,6 +267,7 @@ export class WeatherProvider {
           hourlyPayload.precipitation[index],
         ),
         cloudCover: this.formatPercentage(hourlyPayload.cloud_cover[index]),
+        windDirectionDegrees: hourlyPayload.wind_direction_10m[index] ?? null,
         windDirection: this.formatWindDirection(
           hourlyPayload.wind_direction_10m[index],
         ),
@@ -278,7 +279,9 @@ export class WeatherProvider {
             time,
           ),
         ),
-      }));
+      }),
+    );
+    const hourly: WeatherHourlyItem[] = fullHourly.slice(0, 24);
 
     const daily: WeatherDailyItem[] = dailyPayload.time.map((date, index) => ({
       date,
@@ -309,6 +312,7 @@ export class WeatherProvider {
         source: 'open-meteo',
       },
       hourly,
+      hourlyDetail: fullHourly,
       daily,
       fetchedAt,
       expiresAt,
@@ -319,16 +323,17 @@ export class WeatherProvider {
   buildDailyWeatherDetails(
     snapshot: WeatherSnapshotPayload,
   ): DailyWeatherDetailItem[] {
+    const hourlyDetailItems = snapshot.hourlyDetail ?? snapshot.hourly;
     const dailyItems = snapshot.daily;
     return dailyItems.map(
       (dailyItem: WeatherDailyItem): DailyWeatherDetailItem => {
         const dayHours = this.collectDatePeriodHours(
-          snapshot.hourly,
+          hourlyDetailItems,
           dailyItem.date,
           true,
         );
         const nightHours = this.collectDatePeriodHours(
-          snapshot.hourly,
+          hourlyDetailItems,
           dailyItem.date,
           false,
         );
@@ -346,9 +351,9 @@ export class WeatherProvider {
             dailyItem.nightWeatherText ?? dailyItem.weatherText ?? '未知'
           }`,
           // buildPeriodMetrics 已返回 DayPeriodMetrics；部分 ESLint+project 组合仍误报 error-typed
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- validated WeatherHourSlice[]
+
           dayMetrics: this.buildPeriodMetrics(dayHours),
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- validated WeatherHourSlice[]
+
           nightMetrics: this.buildPeriodMetrics(nightHours),
         };
       },
@@ -996,7 +1001,6 @@ export class WeatherProvider {
     date: string,
     isDay: boolean,
   ): WeatherHourSlice[] {
-    /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment -- WeatherHourlyItem 与 Prisma JSON 反序列化在边界已校验 */
     const slices = hourlyItems
       .filter((item: WeatherHourlyItem) => item.time.startsWith(date))
       .map((item: WeatherHourlyItem) => ({
@@ -1008,7 +1012,10 @@ export class WeatherProvider {
         ),
         precipitationAmount: this.parseNumericValue(item.precipitationAmount),
         cloudCover: this.parseNumericValue(item.cloudCover),
-        windDirection: this.parseNumericValue(item.windDirection),
+        windDirection:
+          item.windDirectionDegrees ??
+          this.parseNumericValue(item.windDirection),
+        windDirectionText: item.windDirection ?? '--',
         isDay: item.isDay ?? false,
         airQuality: this.parseNumericValue(item.airQuality),
       }))
@@ -1017,7 +1024,7 @@ export class WeatherProvider {
           ? item.isDay || (item.hour >= 6 && item.hour < 18)
           : !item.isDay || item.hour < 6 || item.hour >= 18,
       );
-    /* eslint-enable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
+
     return slices;
   }
 
@@ -1033,7 +1040,9 @@ export class WeatherProvider {
       0,
     );
 
-    /* eslint-disable @typescript-eslint/no-unsafe-assignment -- 由已校验的 WeatherHourSlice 聚合 */
+    const formattedWindDirection = this.formatWindDirection(
+      representativeHour?.windDirection,
+    );
     const metrics = {
       feelsLike:
         this.formatTemperature(representativeHour?.apparentTemperature) ?? '--',
@@ -1056,13 +1065,15 @@ export class WeatherProvider {
           this.average(hours.map((item: WeatherHourSlice) => item.airQuality)),
         ) ?? '--',
       windDirection:
-        this.formatWindDirection(representativeHour?.windDirection) ?? '--',
+        formattedWindDirection !== '--'
+          ? formattedWindDirection
+          : (representativeHour?.windDirectionText ?? '--'),
       cloudCover:
         this.formatPercentage(
           this.average(hours.map((item: WeatherHourSlice) => item.cloudCover)),
         ) ?? '--',
     } satisfies DayPeriodMetrics;
-    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
+
     return metrics;
   }
 

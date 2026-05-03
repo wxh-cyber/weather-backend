@@ -16,6 +16,7 @@ export type WeatherHourlyItem = {
   precipitationAmount?: string;
   cloudCover?: string;
   windDirection?: string;
+  windDirectionDegrees?: number | null;
   isDay?: boolean;
   airQuality?: string;
 };
@@ -62,6 +63,7 @@ export type DailyWeatherDetailPayload = {
 export type WeatherSnapshotPayload = {
   current: Omit<WeatherCurrent, 'cityId' | 'cityName'>;
   hourly: WeatherHourlyItem[];
+  hourlyDetail?: WeatherHourlyItem[];
   daily: WeatherDailyItem[];
   fetchedAt: string;
   expiresAt: string;

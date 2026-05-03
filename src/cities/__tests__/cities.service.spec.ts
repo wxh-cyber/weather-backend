@@ -56,6 +56,8 @@ describe('CitiesService', () => {
       {
         cityId: 'city-1',
         cityName: '武汉市',
+        normalizedName: '武汉',
+        searchAliases: '武汉|武汉市',
         cityCode: '420100',
         province: '湖北省',
         country: '中国',
@@ -72,6 +74,93 @@ describe('CitiesService', () => {
     expect(result.data[0].temperature).toBe('26°C');
   });
 
+  it('should return the same search result for 北京 and 北京市', async () => {
+    prisma.city.findMany.mockResolvedValue([
+      {
+        cityId: 'city-bj',
+        cityName: '北京市',
+        normalizedName: '北京',
+        searchAliases: '北京|北京市',
+        cityCode: '110000',
+        province: '北京市',
+        country: '中国',
+        latitude: 39.9042,
+        longitude: 116.4074,
+      },
+    ]);
+
+    const shortKeywordResult = await service.getCities('北京');
+    const fullKeywordResult = await service.getCities('北京市');
+
+    expect(shortKeywordResult.data).toEqual(fullKeywordResult.data);
+    expect(shortKeywordResult.data[0]?.cityName).toBe('北京市');
+  });
+
+  it('should return the same search result for 广州 and 广州市', async () => {
+    prisma.city.findMany.mockResolvedValue([
+      {
+        cityId: 'city-gz',
+        cityName: '广州市',
+        normalizedName: '广州',
+        searchAliases: '广州|广州市',
+        cityCode: '440100',
+        province: '广东省',
+        country: '中国',
+        latitude: 23.1291,
+        longitude: 113.2644,
+      },
+    ]);
+
+    const shortKeywordResult = await service.getCities('广州');
+    const fullKeywordResult = await service.getCities('广州市');
+
+    expect(shortKeywordResult.data).toEqual(fullKeywordResult.data);
+    expect(fullKeywordResult.data[0]?.cityName).toBe('广州市');
+  });
+
+  it('should map 松山湖 search to 东莞市', async () => {
+    prisma.city.findMany.mockResolvedValue([
+      {
+        cityId: 'city-dg',
+        cityName: '东莞市',
+        normalizedName: '东莞',
+        searchAliases:
+          '东莞|东莞市|东莞城区|松山湖|松山湖园区|虎门|虎门镇|长安|长安镇|常平|常平镇|厚街|厚街镇',
+        cityCode: '441900',
+        province: '广东省',
+        country: '中国',
+        latitude: 23.0207,
+        longitude: 113.7518,
+      },
+    ]);
+
+    const result = await service.getCities('松山湖');
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.cityName).toBe('东莞市');
+  });
+
+  it('should normalize whitespace variants during search', async () => {
+    prisma.city.findMany.mockResolvedValue([
+      {
+        cityId: 'city-bj',
+        cityName: '北京市',
+        normalizedName: '北京',
+        searchAliases: '北京|北京市',
+        cityCode: '110000',
+        province: '北京市',
+        country: '中国',
+        latitude: 39.9042,
+        longitude: 116.4074,
+      },
+    ]);
+
+    const result = await service.getCities(' 北京市 ');
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.cityName).toBe('北京市');
+  });
+
   it('should create a city when city name is unique', async () => {
     prisma.city.findUnique.mockResolvedValue(null);
     prisma.city.create.mockResolvedValue({});
@@ -82,6 +171,8 @@ describe('CitiesService', () => {
     expect(prisma.city.create).toHaveBeenCalledWith({
       data: {
         cityName: '测试城',
+        normalizedName: '测试城',
+        searchAliases: '测试城',
         cityCode: null,
         province: '湖北省',
         country: '中国',
@@ -103,6 +194,8 @@ describe('CitiesService', () => {
     expect(prisma.city.create).toHaveBeenCalledWith({
       data: {
         cityName: '上海市',
+        normalizedName: '上海',
+        searchAliases: '上海市|上海',
         cityCode: '310000',
         province: '上海市',
         country: '中国',
@@ -123,6 +216,9 @@ describe('CitiesService', () => {
     expect(prisma.city.create).toHaveBeenCalledWith({
       data: {
         cityName: '东莞市',
+        normalizedName: '东莞',
+        searchAliases:
+          '东莞市|东莞|东莞城区|松山湖|松山湖园区|松山湖园|虎门|虎门镇|长安|长安镇|常平|常平镇|厚街|厚街镇',
         cityCode: '441900',
         province: '广东省',
         country: '中国',
@@ -143,6 +239,9 @@ describe('CitiesService', () => {
     expect(prisma.city.create).toHaveBeenCalledWith({
       data: {
         cityName: '东莞市',
+        normalizedName: '东莞',
+        searchAliases:
+          '东莞市|东莞|东莞城区|松山湖|松山湖园区|松山湖园|虎门|虎门镇|长安|长安镇|常平|常平镇|厚街|厚街镇',
         cityCode: '441900',
         province: '广东省',
         country: '中国',
@@ -163,11 +262,36 @@ describe('CitiesService', () => {
     expect(prisma.city.create).toHaveBeenCalledWith({
       data: {
         cityName: '东莞市',
+        normalizedName: '东莞',
+        searchAliases:
+          '东莞市|东莞|东莞城区|松山湖|松山湖园区|松山湖园|虎门|虎门镇|长安|长安镇|常平|常平镇|厚街|厚街镇',
         cityCode: '441900',
         province: '广东省',
         country: '中国',
         latitude: 23.0207,
         longitude: 113.7518,
+      },
+    });
+  });
+
+  it('should normalize 北京 to 北京市 when creating a city', async () => {
+    prisma.city.findUnique.mockResolvedValue(null);
+    prisma.city.create.mockResolvedValue({});
+    prisma.city.findMany.mockResolvedValue([]);
+
+    await service.createCity('北京');
+
+    expect(weatherProvider.resolveCityByName).not.toHaveBeenCalled();
+    expect(prisma.city.create).toHaveBeenCalledWith({
+      data: {
+        cityName: '北京市',
+        normalizedName: '北京',
+        searchAliases: '北京市|北京',
+        cityCode: '110000',
+        province: '北京市',
+        country: '中国',
+        latitude: 39.9042,
+        longitude: 116.4074,
       },
     });
   });
@@ -228,6 +352,8 @@ describe('CitiesService', () => {
       where: { cityId: 'city-1' },
       data: {
         cityName: '广州市',
+        normalizedName: '广州',
+        searchAliases: '广州市|广州',
         cityCode: '440100',
         province: '广东省',
         country: '中国',
@@ -294,6 +420,12 @@ describe('CitiesService', () => {
           cityCode: 'seed-ok',
           province: '已修复省份',
           country: '中国',
+          normalizedName: where.cityName.replace(/市$/u, ''),
+          searchAliases: [where.cityName, where.cityName.replace(/市$/u, '')]
+            .filter(
+              (value, index, items) => value && items.indexOf(value) === index,
+            )
+            .join('|'),
           latitude: 30.5928,
           longitude: 114.3055,
         });
@@ -336,6 +468,8 @@ describe('CitiesService', () => {
     expect(prisma.city.update).toHaveBeenCalledWith({
       where: { cityId: 'city-sh' },
       data: {
+        normalizedName: '上海',
+        searchAliases: '上海市|上海',
         cityCode: '310000',
         province: '上海市',
         country: '中国',
@@ -346,6 +480,8 @@ describe('CitiesService', () => {
     expect(prisma.city.update).toHaveBeenCalledWith({
       where: { cityId: 'city-gz' },
       data: {
+        normalizedName: '广州',
+        searchAliases: '广州市|广州',
         cityCode: '440100',
         province: '广东省',
         country: '中国',
@@ -356,6 +492,9 @@ describe('CitiesService', () => {
     expect(prisma.city.update).toHaveBeenCalledWith({
       where: { cityId: 'city-dg' },
       data: {
+        normalizedName: '东莞',
+        searchAliases:
+          '东莞市|东莞|东莞城区|松山湖|松山湖园区|松山湖园|虎门|虎门镇|长安|长安镇|常平|常平镇|厚街|厚街镇',
         cityCode: '441900',
         province: '广东省',
         country: '中国',
@@ -363,10 +502,18 @@ describe('CitiesService', () => {
         longitude: 113.7518,
       },
     });
-    expect(prisma.city.update).toHaveBeenCalledWith({
+    const tigerGateRepairCall = prisma.city.update.mock.calls.find(
+      ([argument]) => argument.where.cityId === 'city-hm',
+    );
+
+    expect(tigerGateRepairCall).toBeDefined();
+    expect(tigerGateRepairCall?.[0]).toEqual({
       where: { cityId: 'city-hm' },
       data: {
         cityName: '虎门',
+        normalizedName: '虎门',
+        searchAliases:
+          '虎门|东莞市|东莞|东莞城区|松山湖|松山湖园区|松山湖园|虎门镇|长安|长安镇|常平|常平镇|厚街|厚街镇',
         cityCode: '441900',
         province: '广东省',
         country: '中国',

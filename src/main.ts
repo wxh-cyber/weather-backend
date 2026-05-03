@@ -61,11 +61,14 @@ async function bootstrap() {
       await app.listen(currentPort);
       return;
     } catch (error) {
-      const isAddressInUse =
+      const code =
         typeof error === 'object' &&
         error !== null &&
         'code' in error &&
-        error.code === 'EADDRINUSE';
+        typeof (error as { code: unknown }).code === 'string'
+          ? (error as { code: unknown }).code
+          : undefined;
+      const isAddressInUse = code === 'EADDRINUSE';
       const shouldRetry = isAddressInUse && attempt < maxPortRetry;
       if (!shouldRetry) {
         throw error;

@@ -10,6 +10,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WeatherService } from '../weather/weather.service';
 import { CITY_SEED_DATA } from './city-seed';
 import { CityResolverService } from './city-resolver.service';
+import {
+  buildCitySearchMetadata,
+  buildSearchKeywordCandidates,
+  getCityMatchScore,
+} from './city-search';
 
 @Injectable()
 export class CitiesService implements OnModuleInit {
@@ -26,20 +31,58 @@ export class CitiesService implements OnModuleInit {
 
   async getCities(keyword?: string) {
     const normalizedKeyword = this.normalizeKeyword(keyword);
+    const keywordCandidates = normalizedKeyword
+      ? buildSearchKeywordCandidates(normalizedKeyword)
+      : [];
     const cities = await this.prisma.city.findMany({
       where: normalizedKeyword
         ? {
-            cityName: {
-              contains: normalizedKeyword,
-            },
+            OR: [
+              {
+                cityName: {
+                  contains: normalizedKeyword,
+                },
+              },
+              {
+                normalizedName: {
+                  in: keywordCandidates,
+                },
+              },
+              ...keywordCandidates.map((candidate) => ({
+                searchAliases: {
+                  contains: candidate,
+                },
+              })),
+            ],
           }
         : undefined,
       orderBy: [{ province: 'asc' }, { cityName: 'asc' }],
-      take: normalizedKeyword ? 50 : 100,
+      take: normalizedKeyword ? 100 : 100,
     });
+    const matchedCities = normalizedKeyword
+      ? cities
+          .filter((city) =>
+            Number.isFinite(getCityMatchScore(city, normalizedKeyword)),
+          )
+          .sort((left, right) => {
+            const scoreDiff =
+              getCityMatchScore(left, normalizedKeyword) -
+              getCityMatchScore(right, normalizedKeyword);
+            if (scoreDiff !== 0) {
+              return scoreDiff;
+            }
+
+            const provinceDiff = left.province.localeCompare(right.province);
+            if (provinceDiff !== 0) {
+              return provinceDiff;
+            }
+
+            return left.cityName.localeCompare(right.cityName);
+          })
+      : cities;
 
     const data = await Promise.all(
-      cities.map((city) => this.toCityListItem(city)),
+      matchedCities.map((city) => this.toCityListItem(city)),
     );
 
     return {
@@ -52,6 +95,7 @@ export class CitiesService implements OnModuleInit {
   async createCity(cityName: string) {
     const normalizedName = this.normalizeAndValidateCityName(cityName);
     const resolved = await this.resolveCityMetadataOrThrow(normalizedName);
+    const searchMetadata = buildCitySearchMetadata(resolved.cityName);
     const existing = await this.prisma.city.findUnique({
       where: { cityName: resolved.cityName },
     });
@@ -62,6 +106,8 @@ export class CitiesService implements OnModuleInit {
     await this.prisma.city.create({
       data: {
         cityName: resolved.cityName,
+        normalizedName: searchMetadata.normalizedName,
+        searchAliases: searchMetadata.searchAliases,
         cityCode: resolved.cityCode ?? null,
         province: resolved.province ?? '',
         country: resolved.country ?? '中国',
@@ -85,6 +131,7 @@ export class CitiesService implements OnModuleInit {
     }
 
     const resolved = await this.resolveCityMetadataOrThrow(normalizedNewName);
+    const searchMetadata = buildCitySearchMetadata(resolved.cityName);
     const duplicate = await this.prisma.city.findUnique({
       where: { cityName: resolved.cityName },
     });
@@ -96,6 +143,8 @@ export class CitiesService implements OnModuleInit {
       where: { cityId: source.cityId },
       data: {
         cityName: resolved.cityName,
+        normalizedName: searchMetadata.normalizedName,
+        searchAliases: searchMetadata.searchAliases,
         cityCode: resolved.cityCode ?? source.cityCode,
         province: resolved.province ?? source.province,
         country: resolved.country ?? source.country,
@@ -123,6 +172,7 @@ export class CitiesService implements OnModuleInit {
   async ensureCityExists(cityName: string) {
     const normalizedName = this.normalizeAndValidateCityName(cityName);
     const resolved = await this.resolveCityMetadataOrThrow(normalizedName);
+    const searchMetadata = buildCitySearchMetadata(resolved.cityName);
     const existing = await this.prisma.city.findUnique({
       where: { cityName: resolved.cityName },
     });
@@ -133,6 +183,8 @@ export class CitiesService implements OnModuleInit {
     return this.prisma.city.create({
       data: {
         cityName: resolved.cityName,
+        normalizedName: searchMetadata.normalizedName,
+        searchAliases: searchMetadata.searchAliases,
         cityCode: resolved.cityCode ?? null,
         province: resolved.province ?? '',
         country: resolved.country ?? '中国',
@@ -156,13 +208,18 @@ export class CitiesService implements OnModuleInit {
 
   private async seedCities() {
     await this.prisma.city.createMany({
-      data: CITY_SEED_DATA,
+      data: CITY_SEED_DATA.map((city) => ({
+        ...city,
+        normalizedName: buildCitySearchMetadata(city.cityName).normalizedName,
+        searchAliases: buildCitySearchMetadata(city.cityName).searchAliases,
+      })),
       skipDuplicates: true,
     });
   }
 
   private async repairSeedCityCoordinates() {
     for (const seedCity of CITY_SEED_DATA) {
+      const searchMetadata = buildCitySearchMetadata(seedCity.cityName);
       const existing = await this.prisma.city.findUnique({
         where: { cityName: seedCity.cityName },
       });
@@ -171,6 +228,8 @@ export class CitiesService implements OnModuleInit {
       }
 
       const shouldRepair =
+        existing.normalizedName !== searchMetadata.normalizedName ||
+        existing.searchAliases !== searchMetadata.searchAliases ||
         existing.cityCode !== seedCity.cityCode ||
         existing.country !== seedCity.country ||
         existing.province !== seedCity.province ||
@@ -183,6 +242,8 @@ export class CitiesService implements OnModuleInit {
       await this.prisma.city.update({
         where: { cityId: existing.cityId },
         data: {
+          normalizedName: searchMetadata.normalizedName,
+          searchAliases: searchMetadata.searchAliases,
           cityCode: seedCity.cityCode,
           province: seedCity.province,
           country: seedCity.country,
@@ -210,10 +271,15 @@ export class CitiesService implements OnModuleInit {
         city,
         resolved.cityName,
       );
+      const searchMetadata = buildCitySearchMetadata(
+        nextCityName === city.cityName ? city.cityName : resolved.cityName,
+      );
       await this.prisma.city.update({
         where: { cityId: city.cityId },
         data: {
           cityName: nextCityName,
+          normalizedName: searchMetadata.normalizedName,
+          searchAliases: searchMetadata.searchAliases,
           cityCode: resolved.cityCode ?? city.cityCode,
           province: resolved.province ?? city.province,
           country: resolved.country ?? city.country,

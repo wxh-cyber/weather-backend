@@ -21,7 +21,26 @@ const createProviderMock = () => ({
       source: 'open-meteo',
     },
     hourly: [
-      { time: '2026-04-14T09:00:00Z', weatherText: '晴', temperature: '27°C' },
+      {
+        time: '2026-04-14T09:00:00Z',
+        weatherText: '晴',
+        temperature: '27°C',
+        windDirection: '东南',
+      },
+    ],
+    hourlyDetail: [
+      {
+        time: '2026-04-14T09:00:00Z',
+        weatherText: '晴',
+        temperature: '27°C',
+        windDirection: '东南',
+      },
+      {
+        time: '2026-04-15T03:00:00Z',
+        weatherText: '多云',
+        temperature: '22°C',
+        windDirection: '西北',
+      },
     ],
     daily: [
       {
@@ -171,5 +190,79 @@ describe('WeatherService', () => {
     expect(result.code).toBe(0);
     expect(result.data.items[0]?.dayMetrics.feelsLike).toBe('31°C');
     expect(result.data.items[0]?.nightWeatherText).toBe('多云');
+  });
+
+  it('should deserialize cached hourlyDetail payloads for daily weather detail', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.weatherSnapshot.findUnique.mockResolvedValue({
+      source: 'open-meteo',
+      weatherText: '晴',
+      temperature: '26°C',
+      currentJson: {
+        weatherText: '晴',
+        temperature: '26°C',
+        observedAt: '2026-04-14T06:00:00Z',
+        source: 'open-meteo',
+      },
+      hourlyJson: [
+        {
+          time: '2026-04-14T09:00:00Z',
+          weatherText: '晴',
+          temperature: '27°C',
+          windDirection: '东南',
+        },
+      ],
+      dailyJson: {
+        daily: [
+          {
+            date: '2026-04-14',
+            weatherText: '晴',
+            temperatureMax: '30°C',
+            temperatureMin: '20°C',
+            sunrise: '05:42',
+            sunset: '18:31',
+            dayWeatherText: '晴',
+            nightWeatherText: '多云',
+          },
+        ],
+        hourlyDetail: [
+          {
+            time: '2026-04-14T09:00:00Z',
+            weatherText: '晴',
+            temperature: '27°C',
+            windDirection: '东南',
+          },
+          {
+            time: '2026-04-15T03:00:00Z',
+            weatherText: '多云',
+            temperature: '22°C',
+            windDirection: '西北',
+          },
+        ],
+      },
+      fetchedAt: new Date('2026-04-14T06:00:00Z'),
+      expiresAt: new Date('2099-04-14T06:30:00Z'),
+    });
+
+    await service.getDailyWeatherDetail('city-1');
+
+    expect(provider.buildDailyWeatherDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hourlyDetail: expect.arrayContaining([
+          expect.objectContaining({
+            time: '2026-04-15T03:00:00Z',
+            windDirection: '西北',
+          }),
+        ]),
+      }),
+    );
   });
 });

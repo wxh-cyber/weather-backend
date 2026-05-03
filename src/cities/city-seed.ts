@@ -7,6 +7,7 @@ export type SeedCity = {
   longitude: number;
 };
 
+//默认的34个省会城市列表
 export const CITY_SEED_DATA: SeedCity[] = [
   {
     cityName: '北京市',

@@ -1,0 +1,3 @@
+ALTER TABLE `City`
+  ADD COLUMN `normalizedName` VARCHAR(191) NOT NULL DEFAULT '',
+  ADD COLUMN `searchAliases` TEXT NOT NULL;

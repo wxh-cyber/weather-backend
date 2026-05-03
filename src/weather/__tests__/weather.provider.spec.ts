@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { WeatherProvider } from '../weather.provider';
+import type { WeatherSnapshotPayload } from '../weather.types';
 
 const createConfigService = (overrides: Record<string, string | number> = {}) =>
   ({
@@ -365,6 +366,153 @@ describe('WeatherProvider.reverseGeocode', () => {
 
     expect(result).toBeNull();
     expect(global.fetch).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('WeatherProvider.buildDailyWeatherDetails', () => {
+  it('should use hourlyDetail for later dates and keep wind direction readable', () => {
+    const provider = new WeatherProvider(createConfigService());
+    const snapshot: WeatherSnapshotPayload = {
+      current: {
+        weatherText: '晴',
+        temperature: '26°C',
+        observedAt: '2026-05-02T09:00:00+08:00',
+        source: 'open-meteo',
+      },
+      hourly: [
+        {
+          time: '2026-05-02T09:00:00+08:00',
+          temperature: '26°C',
+          weatherText: '晴',
+          apparentTemperature: '28°C',
+          precipitationProbability: '10%',
+          precipitationAmount: '0.0 mm',
+          cloudCover: '24%',
+          windDirection: '东南',
+          windDirectionDegrees: 135,
+          isDay: true,
+          airQuality: 'AQI 48',
+        },
+      ],
+      hourlyDetail: [
+        {
+          time: '2026-05-02T09:00:00+08:00',
+          temperature: '26°C',
+          weatherText: '晴',
+          apparentTemperature: '28°C',
+          precipitationProbability: '10%',
+          precipitationAmount: '0.0 mm',
+          cloudCover: '24%',
+          windDirection: '东南',
+          windDirectionDegrees: 135,
+          isDay: true,
+          airQuality: 'AQI 48',
+        },
+        {
+          time: '2026-05-03T03:00:00+08:00',
+          temperature: '21°C',
+          weatherText: '多云',
+          apparentTemperature: '20°C',
+          precipitationProbability: '22%',
+          precipitationAmount: '0.4 mm',
+          cloudCover: '60%',
+          windDirection: '西北',
+          windDirectionDegrees: 315,
+          isDay: false,
+          airQuality: 'AQI 53',
+        },
+        {
+          time: '2026-05-03T09:00:00+08:00',
+          temperature: '24°C',
+          weatherText: '小雨',
+          apparentTemperature: '23°C',
+          precipitationProbability: '35%',
+          precipitationAmount: '1.2 mm',
+          cloudCover: '72%',
+          windDirection: '北',
+          windDirectionDegrees: 0,
+          isDay: true,
+          airQuality: 'AQI 55',
+        },
+      ],
+      daily: [
+        {
+          date: '2026-05-02',
+          weatherText: '晴',
+          temperatureMax: '30°C',
+          temperatureMin: '20°C',
+          sunrise: '05:34',
+          sunset: '18:59',
+          dayWeatherText: '晴',
+          nightWeatherText: '多云',
+        },
+        {
+          date: '2026-05-03',
+          weatherText: '小雨',
+          temperatureMax: '25°C',
+          temperatureMin: '18°C',
+          sunrise: '05:33',
+          sunset: '19:00',
+          dayWeatherText: '小雨',
+          nightWeatherText: '多云',
+        },
+      ],
+      fetchedAt: '2026-05-02T09:00:00+08:00',
+      expiresAt: '2026-05-02T09:30:00+08:00',
+      source: 'open-meteo',
+    };
+
+    const result = provider.buildDailyWeatherDetails(snapshot);
+
+    expect(result[1]?.dayMetrics.feelsLike).toBe('23°C');
+    expect(result[1]?.dayMetrics.windDirection).toBe('北');
+    expect(result[1]?.nightMetrics.precipitationProbability).toBe('22%');
+    expect(result[1]?.nightMetrics.windDirection).toBe('西北');
+  });
+
+  it('should preserve readable wind direction even when only display text exists', () => {
+    const provider = new WeatherProvider(createConfigService());
+    const snapshot: WeatherSnapshotPayload = {
+      current: {
+        weatherText: '晴',
+        temperature: '26°C',
+        observedAt: '2026-05-02T09:00:00+08:00',
+        source: 'open-meteo',
+      },
+      hourly: [
+        {
+          time: '2026-05-02T09:00:00+08:00',
+          temperature: '26°C',
+          weatherText: '晴',
+          apparentTemperature: '28°C',
+          precipitationProbability: '10%',
+          precipitationAmount: '0.0 mm',
+          cloudCover: '24%',
+          windDirection: '东南',
+          isDay: true,
+          airQuality: 'AQI 48',
+        },
+      ],
+      daily: [
+        {
+          date: '2026-05-02',
+          weatherText: '晴',
+          temperatureMax: '30°C',
+          temperatureMin: '20°C',
+          sunrise: '05:34',
+          sunset: '18:59',
+          dayWeatherText: '晴',
+          nightWeatherText: '多云',
+        },
+      ],
+      fetchedAt: '2026-05-02T09:00:00+08:00',
+      expiresAt: '2026-05-02T09:30:00+08:00',
+      source: 'open-meteo',
+    };
+
+    const result = provider.buildDailyWeatherDetails(snapshot);
+
+    expect(result[0]?.dayMetrics.windDirection).toBe('东南');
   });
 });
 

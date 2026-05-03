@@ -50,6 +50,8 @@ model RefreshToken {
 model City {
   cityId           String            @id @default(cuid())
   cityName         String            @unique
+  normalizedName   String            @default("")
+  searchAliases    String            @default("")
   cityCode         String?           @unique
   province         String            @default("")
   country          String            @default("中国")
