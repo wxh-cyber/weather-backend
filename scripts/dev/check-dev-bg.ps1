@@ -90,7 +90,7 @@ $successMarkers = [pscustomobject]@{
   buildWatchAlive = $null -ne $buildProcess
   appWatchAlive = $null -ne $appProcess
   buildHasCompileError = ($buildStdout -match 'Found [1-9]\d* error') -or ($buildStderr -match 'TS\d{4}')
-  appHasPortConflict = $appStderr -match 'EADDRINUSE'
+  appHasPortConflict = ($appStderr -match 'EADDRINUSE') -or ($appStderr -match 'PORT_BLOCKED')
   appHasRuntimeError = -not [string]::IsNullOrWhiteSpace($appRuntimeStderr)
   appStarted = ($appStdout -match 'Nest application successfully started') -or ($appStdout -match '\[app-watch .*\] Started app process \d+\.')
 }
@@ -99,7 +99,7 @@ if ($successMarkers.buildHasCompileError) {
   $errorSummary.Add('Build watch reported TypeScript errors.')
 }
 if ($successMarkers.appHasPortConflict) {
-  $errorSummary.Add('Detected EADDRINUSE in app stderr.')
+  $errorSummary.Add('Detected managed port conflict in app stderr.')
 }
 if ($successMarkers.appHasRuntimeError -and -not $successMarkers.appHasPortConflict) {
   $errorSummary.Add('App watch reported runtime errors.')

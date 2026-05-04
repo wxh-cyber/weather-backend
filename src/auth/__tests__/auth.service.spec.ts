@@ -548,4 +548,24 @@ describe('AuthService', () => {
       data: { passwordHash: expect.stringMatching(/^\$2[aby]\$/) },
     });
   });
+
+  it('should reset configured dev login account to the expected bcrypt password when hash drifts', async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce({
+        userId: 'demo-user',
+        passwordHash: await hash('123456', 10),
+      })
+      .mockResolvedValueOnce({
+        userId: 'dev-user',
+        passwordHash: await hash('not-123456', 10),
+      });
+    prisma.user.update.mockResolvedValue({});
+
+    await service.onModuleInit();
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { userId: 'dev-user' },
+      data: { passwordHash: expect.stringMatching(/^\$2[aby]\$/) },
+    });
+  });
 });

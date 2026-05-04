@@ -265,4 +265,193 @@ describe('WeatherService', () => {
       }),
     );
   });
+
+  it('should backfill current weather metrics from cached hourly data when legacy currentJson is incomplete', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.weatherSnapshot.findUnique.mockResolvedValue({
+      source: 'open-meteo',
+      weatherText: '晴',
+      temperature: '26°C',
+      currentJson: {
+        weatherText: '晴',
+        temperature: '26°C',
+        observedAt: '2026-04-14T06:00:00Z',
+        source: 'open-meteo',
+      },
+      hourlyJson: [
+        {
+          time: '2026-04-14T09:00:00Z',
+          weatherText: '晴',
+          temperature: '27°C',
+          apparentTemperature: '28°C',
+          precipitationProbability: '10%',
+          precipitationAmount: '0.0 mm',
+          cloudCover: '22%',
+          windDirection: '东南',
+          windSpeed: '12.6 km/h',
+          humidity: '68%',
+          visibility: '10.0 公里',
+          pressure: '1008 hPa',
+          dewPoint: '18°C',
+          airQuality: 'AQI 51',
+        },
+      ],
+      dailyJson: {
+        daily: [
+          {
+            date: '2026-04-14',
+            weatherText: '晴',
+            temperatureMax: '30°C',
+            temperatureMin: '20°C',
+            sunrise: '05:42',
+            sunset: '18:31',
+            dayWeatherText: '晴',
+            nightWeatherText: '多云',
+          },
+        ],
+        hourlyDetail: [
+          {
+            time: '2026-04-14T09:00:00Z',
+            weatherText: '晴',
+            temperature: '27°C',
+            apparentTemperature: '28°C',
+            precipitationProbability: '10%',
+            precipitationAmount: '0.0 mm',
+            cloudCover: '22%',
+            windDirection: '东南',
+            windSpeed: '12.6 km/h',
+            humidity: '68%',
+            visibility: '10.0 公里',
+            pressure: '1008 hPa',
+            dewPoint: '18°C',
+            airQuality: 'AQI 51',
+          },
+        ],
+      },
+      fetchedAt: new Date('2026-04-14T06:00:00Z'),
+      expiresAt: new Date('2099-04-14T06:30:00Z'),
+    });
+
+    const result = await service.getCurrentWeather('city-1');
+
+    expect(result.data.apparentTemperature).toBe('28°C');
+    expect(result.data.precipitationProbability).toBe('10%');
+    expect(result.data.precipitationAmount).toBe('0.0 mm');
+    expect(result.data.cloudCover).toBe('22%');
+    expect(result.data.windDirection).toBe('东南');
+    expect(result.data.windSpeed).toBe('12.6 km/h');
+    expect(result.data.humidity).toBe('68%');
+    expect(result.data.visibility).toBe('10.0 公里');
+    expect(result.data.pressure).toBe('1008 hPa');
+    expect(result.data.dewPoint).toBe('18°C');
+    expect(result.data.airQuality).toBe('AQI 51');
+  });
+
+  it('should backfill placeholder current weather metrics from cached hourly detail data', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.weatherSnapshot.findUnique.mockResolvedValue({
+      source: 'open-meteo',
+      weatherText: '晴',
+      temperature: '26°C',
+      currentJson: {
+        weatherText: '晴',
+        temperature: '26°C',
+        apparentTemperature: '--',
+        precipitationProbability: ' ',
+        precipitationAmount: '',
+        cloudCover: '--',
+        windDirection: '--',
+        windSpeed: '--',
+        humidity: '--',
+        visibility: '--',
+        pressure: '--',
+        dewPoint: '--',
+        airQuality: '--',
+        observedAt: '2026-04-14T06:00:00Z',
+        source: 'open-meteo',
+      },
+      hourlyJson: [
+        {
+          time: '2026-04-14T09:00:00Z',
+          weatherText: '晴',
+          temperature: '27°C',
+          apparentTemperature: '28°C',
+          precipitationProbability: '10%',
+          precipitationAmount: '0.0 mm',
+          cloudCover: '22%',
+          windDirection: '东南',
+          windSpeed: '12.6 km/h',
+          humidity: '68%',
+          visibility: '10.0 公里',
+          pressure: '1008 hPa',
+          dewPoint: '18°C',
+          airQuality: 'AQI 51',
+        },
+      ],
+      dailyJson: {
+        daily: [
+          {
+            date: '2026-04-14',
+            weatherText: '晴',
+            temperatureMax: '30°C',
+            temperatureMin: '20°C',
+            sunrise: '05:42',
+            sunset: '18:31',
+            dayWeatherText: '晴',
+            nightWeatherText: '多云',
+          },
+        ],
+        hourlyDetail: [
+          {
+            time: '2026-04-14T09:00:00Z',
+            weatherText: '晴',
+            temperature: '27°C',
+            apparentTemperature: '28°C',
+            precipitationProbability: '10%',
+            precipitationAmount: '0.0 mm',
+            cloudCover: '22%',
+            windDirection: '东南',
+            windSpeed: '12.6 km/h',
+            humidity: '68%',
+            visibility: '10.0 公里',
+            pressure: '1008 hPa',
+            dewPoint: '18°C',
+            airQuality: 'AQI 51',
+          },
+        ],
+      },
+      fetchedAt: new Date('2026-04-14T06:00:00Z'),
+      expiresAt: new Date('2099-04-14T06:30:00Z'),
+    });
+
+    const result = await service.getCurrentWeather('city-1');
+
+    expect(result.data.apparentTemperature).toBe('28°C');
+    expect(result.data.precipitationProbability).toBe('10%');
+    expect(result.data.precipitationAmount).toBe('0.0 mm');
+    expect(result.data.cloudCover).toBe('22%');
+    expect(result.data.windDirection).toBe('东南');
+    expect(result.data.windSpeed).toBe('12.6 km/h');
+    expect(result.data.humidity).toBe('68%');
+    expect(result.data.visibility).toBe('10.0 公里');
+    expect(result.data.pressure).toBe('1008 hPa');
+    expect(result.data.dewPoint).toBe('18°C');
+    expect(result.data.airQuality).toBe('AQI 51');
+  });
 });

@@ -25,6 +25,11 @@ type OpenMeteoForecastResponse = {
     precipitation: number[];
     cloud_cover: number[];
     wind_direction_10m: number[];
+    wind_speed_10m: number[];
+    relative_humidity_2m: number[];
+    dew_point_2m: number[];
+    pressure_msl: number[];
+    visibility: number[];
     is_day: number[];
   };
   daily?: {
@@ -182,7 +187,15 @@ export class WeatherProvider {
       'timezone',
       this.configService.get<string>('WEATHER_TIMEZONE', 'Asia/Shanghai'),
     );
-    url.searchParams.set('forecast_days', '7');
+    const forecastDays = this.configService.get<number>(
+      'WEATHER_FORECAST_DAYS',
+      90,
+    );
+    const normalizedForecastDays = Math.min(
+      90,
+      Math.max(1, Number(forecastDays) || 90),
+    );
+    url.searchParams.set('forecast_days', String(normalizedForecastDays));
     url.searchParams.set('current', 'temperature_2m,weather_code');
     url.searchParams.set(
       'hourly',
@@ -194,6 +207,11 @@ export class WeatherProvider {
         'precipitation',
         'cloud_cover',
         'wind_direction_10m',
+        'wind_speed_10m',
+        'relative_humidity_2m',
+        'dew_point_2m',
+        'pressure_msl',
+        'visibility',
         'is_day',
       ].join(','),
     );
@@ -214,7 +232,10 @@ export class WeatherProvider {
       'timezone',
       this.configService.get<string>('WEATHER_TIMEZONE', 'Asia/Shanghai'),
     );
-    airQualityUrl.searchParams.set('forecast_days', '7');
+    airQualityUrl.searchParams.set(
+      'forecast_days',
+      String(normalizedForecastDays),
+    );
     airQualityUrl.searchParams.set('hourly', 'us_aqi');
 
     const [response, airQualityResponse] = await Promise.all([
@@ -271,6 +292,13 @@ export class WeatherProvider {
         windDirection: this.formatWindDirection(
           hourlyPayload.wind_direction_10m[index],
         ),
+        windSpeed: this.formatWindSpeed(hourlyPayload.wind_speed_10m[index]),
+        humidity: this.formatPercentage(
+          hourlyPayload.relative_humidity_2m[index],
+        ),
+        visibility: this.formatVisibility(hourlyPayload.visibility[index]),
+        pressure: this.formatPressure(hourlyPayload.pressure_msl[index]),
+        dewPoint: this.formatTemperature(hourlyPayload.dew_point_2m[index]),
         isDay: (hourlyPayload.is_day[index] ?? 0) === 1,
         airQuality: this.formatAirQuality(
           this.lookupAirQualityByTime(
@@ -308,6 +336,18 @@ export class WeatherProvider {
       current: {
         weatherText: this.mapWeatherCode(payload.current.weather_code),
         temperature: `${Math.round(payload.current.temperature_2m)}°C`,
+        apparentTemperature: fullHourly[0]?.apparentTemperature ?? '--',
+        precipitationProbability:
+          fullHourly[0]?.precipitationProbability ?? '--',
+        precipitationAmount: fullHourly[0]?.precipitationAmount ?? '--',
+        cloudCover: fullHourly[0]?.cloudCover ?? '--',
+        windDirection: fullHourly[0]?.windDirection ?? '--',
+        windSpeed: fullHourly[0]?.windSpeed ?? '--',
+        humidity: fullHourly[0]?.humidity ?? '--',
+        visibility: fullHourly[0]?.visibility ?? '--',
+        pressure: fullHourly[0]?.pressure ?? '--',
+        dewPoint: fullHourly[0]?.dewPoint ?? '--',
+        airQuality: fullHourly[0]?.airQuality ?? '--',
         observedAt: payload.current.time,
         source: 'open-meteo',
       },
@@ -1172,6 +1212,30 @@ export class WeatherProvider {
     }
 
     return `${(value as number).toFixed((value as number) >= 10 ? 0 : 1)} mm`;
+  }
+
+  private formatWindSpeed(value?: number | null): string {
+    if (!Number.isFinite(value ?? NaN)) {
+      return '--';
+    }
+
+    return `${(value as number).toFixed(1)} km/h`;
+  }
+
+  private formatVisibility(value?: number | null): string {
+    if (!Number.isFinite(value ?? NaN)) {
+      return '--';
+    }
+
+    return `${((value as number) / 1000).toFixed(1)} 公里`;
+  }
+
+  private formatPressure(value?: number | null): string {
+    if (!Number.isFinite(value ?? NaN)) {
+      return '--';
+    }
+
+    return `${Math.round(value as number)} hPa`;
   }
 
   private formatAirQuality(value?: number | null): string {

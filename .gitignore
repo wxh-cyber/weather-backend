@@ -3,6 +3,9 @@
 /node_modules
 /build
 
+# Local automation/runtime artifacts
+/.codex-runtime
+
 # Logs
 logs
 *.log
@@ -12,6 +15,9 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 gcm-diagnose.log
+
+# Local backups and diagnostics
+.git-acl-backup*.txt
 
 # OS
 .DS_Store
@@ -43,9 +49,20 @@ gcm-diagnose.log
 .env.production.local
 .env.local
 
+# Local database files
+prisma/*.db
+prisma/*.db-journal
+prisma/*.sqlite
+prisma/*.sqlite3
+prisma/*.sqlite-journal
+prisma/*.sqlite3-journal
+
 # temp directory
 .temp
 .tmp
+
+# User uploaded runtime files
+/uploads
 
 # Runtime data
 pids

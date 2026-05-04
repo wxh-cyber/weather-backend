@@ -251,15 +251,76 @@ export class WeatherService {
     const hourlyDetailItems = Array.isArray(dailyJson)
       ? undefined
       : dailyJson.hourlyDetail;
+    const hourlyItems = snapshotRecord.hourlyJson as WeatherHourlyItem[];
+    const currentPayload = this.backfillCurrentWeatherMetrics(
+      snapshotRecord.currentJson as WeatherSnapshotPayload['current'],
+      hourlyDetailItems ?? hourlyItems,
+    );
 
     return {
-      current: snapshotRecord.currentJson as WeatherSnapshotPayload['current'],
-      hourly: snapshotRecord.hourlyJson as WeatherHourlyItem[],
+      current: currentPayload,
+      hourly: hourlyItems,
       hourlyDetail: hourlyDetailItems,
       daily: dailyItems,
       fetchedAt: snapshotRecord.fetchedAt.toISOString(),
       expiresAt: snapshotRecord.expiresAt.toISOString(),
       source: snapshotRecord.source,
+    };
+  }
+
+  private backfillCurrentWeatherMetrics(
+    current: WeatherSnapshotPayload['current'],
+    sourceItems: WeatherHourlyItem[],
+  ): WeatherSnapshotPayload['current'] {
+    const fallback = sourceItems[0];
+    if (!fallback) {
+      return current;
+    }
+
+    const preferCurrent = <T extends string | undefined>(
+      value: T,
+      fallbackValue: T,
+    ) => {
+      if (value === undefined || value === null) {
+        return fallbackValue;
+      }
+
+      const normalizedValue = value.trim();
+      if (!normalizedValue || normalizedValue === '--') {
+        return fallbackValue;
+      }
+
+      return value;
+    };
+
+    return {
+      ...current,
+      apparentTemperature:
+        preferCurrent(
+          current.apparentTemperature,
+          fallback.apparentTemperature,
+        ),
+      precipitationProbability:
+        preferCurrent(
+          current.precipitationProbability,
+          fallback.precipitationProbability,
+        ),
+      precipitationAmount:
+        preferCurrent(
+          current.precipitationAmount,
+          fallback.precipitationAmount,
+        ),
+      cloudCover: preferCurrent(current.cloudCover, fallback.cloudCover),
+      windDirection: preferCurrent(
+        current.windDirection,
+        fallback.windDirection,
+      ),
+      windSpeed: preferCurrent(current.windSpeed, fallback.windSpeed),
+      humidity: preferCurrent(current.humidity, fallback.humidity),
+      visibility: preferCurrent(current.visibility, fallback.visibility),
+      pressure: preferCurrent(current.pressure, fallback.pressure),
+      dewPoint: preferCurrent(current.dewPoint, fallback.dewPoint),
+      airQuality: preferCurrent(current.airQuality, fallback.airQuality),
     };
   }
 

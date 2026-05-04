@@ -24,6 +24,22 @@ import type { AuthUser, LoginContext } from './auth.types';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
+  private static readonly DEV_AUTH_ACCOUNTS: ReadonlyArray<{
+    email: string;
+    password: string;
+    nickname?: string;
+  }> = [
+    {
+      email: 'demo@weather.com',
+      password: '123456',
+      nickname: '演示账号',
+    },
+    {
+      email: '1097071510@qq.com',
+      password: '123456',
+    },
+  ];
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly authTokenService: AuthTokenService,
@@ -31,7 +47,7 @@ export class AuthService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.ensureDemoUser();
+    await this.ensureDevAuthAccounts();
   }
 
   async register(dto: RegisterDto) {
@@ -380,35 +396,40 @@ export class AuthService implements OnModuleInit {
     }
   }
 
-  private async ensureDemoUser() {
+  private async ensureDevAuthAccounts() {
     try {
-      const demoEmail = 'demo@weather.com';
-      const existingDemo = await this.prisma.user.findUnique({
-        where: { email: demoEmail },
-        select: { userId: true, passwordHash: true },
-      });
+      for (const account of AuthService.DEV_AUTH_ACCOUNTS) {
+        const existingUser = await this.prisma.user.findUnique({
+          where: { email: account.email },
+          select: { userId: true, passwordHash: true },
+        });
 
-      if (existingDemo && this.isBcryptHash(existingDemo.passwordHash)) {
-        return;
-      }
+        const nextPasswordHash = await hash(account.password, 10);
 
-      const nextPasswordHash = await hash('123456', 10);
+        if (!existingUser) {
+          await this.prisma.user.create({
+            data: {
+              email: account.email,
+              passwordHash: nextPasswordHash,
+              nickname: account.nickname ?? null,
+            },
+          });
+          continue;
+        }
 
-      if (existingDemo) {
+        const passwordMatches = await compare(
+          account.password,
+          existingUser.passwordHash,
+        );
+        if (passwordMatches) {
+          continue;
+        }
+
         await this.prisma.user.update({
-          where: { userId: existingDemo.userId },
+          where: { userId: existingUser.userId },
           data: { passwordHash: nextPasswordHash },
         });
-        return;
       }
-
-      await this.prisma.user.create({
-        data: {
-          email: demoEmail,
-          passwordHash: nextPasswordHash,
-          nickname: '演示账号',
-        },
-      });
     } catch (error) {
       this.handlePrismaError(error);
     }

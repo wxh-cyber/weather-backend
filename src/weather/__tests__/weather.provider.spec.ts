@@ -516,6 +516,99 @@ describe('WeatherProvider.buildDailyWeatherDetails', () => {
   });
 });
 
+describe('WeatherProvider.fetchForecast', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
+  it('should use configured forecast days and map current environment metrics', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          current: {
+            time: '2026-05-04T10:00',
+            temperature_2m: 26.4,
+            weather_code: 1,
+          },
+          hourly: {
+            time: ['2026-05-04T10:00'],
+            temperature_2m: [26.4],
+            weather_code: [1],
+            apparent_temperature: [28.1],
+            precipitation_probability: [35],
+            precipitation: [0.8],
+            cloud_cover: [62],
+            wind_direction_10m: [45],
+            wind_speed_10m: [16.2],
+            relative_humidity_2m: [78],
+            dew_point_2m: [21.3],
+            pressure_msl: [1008.6],
+            visibility: [12000],
+            is_day: [1],
+          },
+          daily: {
+            time: ['2026-05-04'],
+            temperature_2m_max: [30.2],
+            temperature_2m_min: [21.4],
+            weather_code: [1],
+            sunrise: ['2026-05-04T05:35'],
+            sunset: ['2026-05-04T19:02'],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          hourly: {
+            time: ['2026-05-04T10:00'],
+            us_aqi: [42],
+          },
+        }),
+      });
+    global.fetch = fetchMock as typeof fetch;
+
+    const provider = new WeatherProvider(
+      createConfigService({
+        WEATHER_FORECAST_DAYS: 90,
+      }),
+    );
+
+    const result = await provider.fetchForecast({
+      cityName: '武汉市',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+
+    const forecastUrl = fetchMock.mock.calls[0]?.[0] as URL;
+    expect(forecastUrl.searchParams.get('forecast_days')).toBe('90');
+    expect(result.current).toMatchObject({
+      apparentTemperature: '28°C',
+      precipitationProbability: '35%',
+      precipitationAmount: '0.8 mm',
+      cloudCover: '62%',
+      windDirection: '东北',
+      windSpeed: '16.2 km/h',
+      humidity: '78%',
+      visibility: '12.0 公里',
+      pressure: '1009 hPa',
+      dewPoint: '21°C',
+      airQuality: 'AQI 42',
+    });
+    expect(result.hourly[0]).toMatchObject({
+      windSpeed: '16.2 km/h',
+      humidity: '78%',
+      visibility: '12.0 公里',
+      pressure: '1009 hPa',
+      dewPoint: '21°C',
+    });
+  });
+});
+
 describe('WeatherProvider.buildDailyWeatherDetails', () => {
   it('should group snapshot hours into day and night metrics', () => {
     const provider = new WeatherProvider(createConfigService());
