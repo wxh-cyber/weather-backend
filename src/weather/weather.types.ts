@@ -86,6 +86,23 @@ export type WeatherSnapshotPayload = {
   source: string;
 };
 
+export type CityWeatherBundle = {
+  current: WeatherCurrent;
+  hourly: {
+    cityId: string;
+    cityName: string;
+    source: string;
+    items: WeatherHourlyItem[];
+  };
+  daily: {
+    cityId: string;
+    cityName: string;
+    source: string;
+    items: WeatherDailyItem[];
+  };
+  dailyDetail: DailyWeatherDetailPayload;
+};
+
 export type CityMetadata = {
   cityName: string;
   cityCode?: string;

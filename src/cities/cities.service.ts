@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -103,18 +104,25 @@ export class CitiesService implements OnModuleInit {
       throw new ConflictException('城市已存在，请勿重复添加');
     }
 
-    await this.prisma.city.create({
-      data: {
-        cityName: resolved.cityName,
-        normalizedName: searchMetadata.normalizedName,
-        searchAliases: searchMetadata.searchAliases,
-        cityCode: resolved.cityCode ?? null,
-        province: resolved.province ?? '',
-        country: resolved.country ?? '中国',
-        latitude: resolved.latitude,
-        longitude: resolved.longitude,
-      },
-    });
+    try {
+      await this.prisma.city.create({
+        data: {
+          cityName: resolved.cityName,
+          normalizedName: searchMetadata.normalizedName,
+          searchAliases: searchMetadata.searchAliases,
+          cityCode: resolved.cityCode ?? null,
+          province: resolved.province ?? '',
+          country: resolved.country ?? '中国',
+          latitude: resolved.latitude,
+          longitude: resolved.longitude,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'P2002') {
+        throw new ConflictException('城市已存在，请勿重复添加');
+      }
+      throw new InternalServerErrorException('Failed to create city');
+    }
 
     return this.getCities();
   }
@@ -180,18 +188,33 @@ export class CitiesService implements OnModuleInit {
       return existing;
     }
 
-    return this.prisma.city.create({
-      data: {
-        cityName: resolved.cityName,
-        normalizedName: searchMetadata.normalizedName,
-        searchAliases: searchMetadata.searchAliases,
-        cityCode: resolved.cityCode ?? null,
-        province: resolved.province ?? '',
-        country: resolved.country ?? '中国',
-        latitude: resolved.latitude,
-        longitude: resolved.longitude,
-      },
-    });
+    try {
+      return await this.prisma.city.create({
+        data: {
+          cityName: resolved.cityName,
+          normalizedName: searchMetadata.normalizedName,
+          searchAliases: searchMetadata.searchAliases,
+          cityCode: resolved.cityCode ?? null,
+          province: resolved.province ?? '',
+          country: resolved.country ?? '中国',
+          latitude: resolved.latitude,
+          longitude: resolved.longitude,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'P2002') {
+        // Concurrent insertion: retry findUnique
+        const retryExisting = await this.prisma.city.findUnique({
+          where: { cityName: resolved.cityName },
+        });
+        if (retryExisting) {
+          return retryExisting;
+        }
+      }
+      throw new InternalServerErrorException(
+        'Failed to create or retrieve city',
+      );
+    }
   }
 
   async getCityByNameOrThrow(cityName: string) {

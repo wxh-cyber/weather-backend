@@ -19,6 +19,13 @@ gcm-diagnose.log
 # Local backups and diagnostics
 .git-acl-backup*.txt
 
+# Local AI/review drafts
+.github/*REPORT*.md
+.github/*SUMMARY*.md
+.github/QUICK_REFERENCE.md
+.github/prompt.md
+.github/review.md
+
 # OS
 .DS_Store
 

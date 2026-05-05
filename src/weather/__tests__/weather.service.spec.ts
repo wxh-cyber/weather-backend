@@ -192,6 +192,48 @@ describe('WeatherService', () => {
     expect(result.data.items[0]?.nightWeatherText).toBe('多云');
   });
 
+  it('should return a complete weather bundle for a city', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.weatherSnapshot.findUnique.mockResolvedValue(null);
+    prisma.weatherSnapshot.upsert.mockResolvedValue({});
+
+    const result = await service.getCityWeatherBundle('city-1');
+
+    expect(provider.fetchForecast).toHaveBeenCalledTimes(1);
+    expect(provider.buildDailyWeatherDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        current: expect.objectContaining({
+          weatherText: '晴',
+          temperature: '26°C',
+        }),
+        hourly: expect.arrayContaining([
+          expect.objectContaining({
+            time: '2026-04-14T09:00:00Z',
+            temperature: '27°C',
+          }),
+        ]),
+        daily: expect.arrayContaining([
+          expect.objectContaining({
+            date: '2026-04-14',
+            temperatureMax: '30°C',
+          }),
+        ]),
+      }),
+    );
+    expect(result.current.cityName).toBe('武汉市');
+    expect(result.hourly.items[0]?.temperature).toBe('27°C');
+    expect(result.daily.items[0]?.temperatureMin).toBe('20°C');
+    expect(result.dailyDetail.items[0]?.nightMetrics.airQuality).toBe('AQI 48');
+  });
+
   it('should deserialize cached hourlyDetail payloads for daily weather detail', async () => {
     prisma.city.findUnique.mockResolvedValue({
       cityId: 'city-1',

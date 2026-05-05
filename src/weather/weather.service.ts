@@ -8,6 +8,7 @@ import type { City, WeatherSnapshot } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { WeatherProvider } from './weather.provider';
 import type {
+  CityWeatherBundle,
   DailyWeatherDetailPayload,
   WeatherCurrent,
   WeatherDailyItem,
@@ -82,6 +83,37 @@ export class WeatherService {
         source: snapshot.source,
         items: this.weatherProvider.buildDailyWeatherDetails(snapshot),
       } satisfies DailyWeatherDetailPayload,
+    };
+  }
+
+  async getCityWeatherBundle(cityId: string): Promise<CityWeatherBundle> {
+    const city = await this.getCityOrThrow(cityId);
+    const snapshot = await this.requireSnapshot(city);
+
+    return {
+      current: {
+        cityId: city.cityId,
+        cityName: city.cityName,
+        ...snapshot.current,
+      },
+      hourly: {
+        cityId: city.cityId,
+        cityName: city.cityName,
+        source: snapshot.source,
+        items: snapshot.hourly,
+      },
+      daily: {
+        cityId: city.cityId,
+        cityName: city.cityName,
+        source: snapshot.source,
+        items: snapshot.daily,
+      },
+      dailyDetail: {
+        cityId: city.cityId,
+        cityName: city.cityName,
+        source: snapshot.source,
+        items: this.weatherProvider.buildDailyWeatherDetails(snapshot),
+      },
     };
   }
 
@@ -295,21 +327,18 @@ export class WeatherService {
 
     return {
       ...current,
-      apparentTemperature:
-        preferCurrent(
-          current.apparentTemperature,
-          fallback.apparentTemperature,
-        ),
-      precipitationProbability:
-        preferCurrent(
-          current.precipitationProbability,
-          fallback.precipitationProbability,
-        ),
-      precipitationAmount:
-        preferCurrent(
-          current.precipitationAmount,
-          fallback.precipitationAmount,
-        ),
+      apparentTemperature: preferCurrent(
+        current.apparentTemperature,
+        fallback.apparentTemperature,
+      ),
+      precipitationProbability: preferCurrent(
+        current.precipitationProbability,
+        fallback.precipitationProbability,
+      ),
+      precipitationAmount: preferCurrent(
+        current.precipitationAmount,
+        fallback.precipitationAmount,
+      ),
       cloudCover: preferCurrent(current.cloudCover, fallback.cloudCover),
       windDirection: preferCurrent(
         current.windDirection,

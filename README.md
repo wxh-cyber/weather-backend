@@ -201,19 +201,39 @@ docker compose down -v
 
 ## 常用脚本
 
+| 命令 | 说明 |
+|------|------|
+| `npm run build` | 编译 NestJS 项目到 `dist/` |
+| `npm run build:watch` | 监听模式编译后端代码 |
+| `npm run start` | 使用 Nest CLI 启动服务 |
+| `npm run start:dev` | 前台启动开发服务，当前封装为 PowerShell 脚本 |
+| `npm run start:dev:bg` | 后台启动开发服务 |
+| `npm run start:dev:check` | 检查后台开发服务状态 |
+| `npm run start:dev:logs` | 查看后台开发服务日志 |
+| `npm run start:dev:stop` | 停止后台开发服务 |
+| `npm run start:dev:cleanup` | 清理开发服务占用端口 |
+| `npm run start:dev:ports` | 查看开发服务相关端口 |
+| `npm run start:dev:probe` | 启动开发服务并做短时探测 |
+| `npm run start:dev:observe` | 启动并观察服务控制台状态 |
+| `npm run start:dev:observe:http` | 启动并观察 HTTP 可访问状态 |
+| `npm run start:debug` | Debug + watch 模式启动 |
+| `npm run start:prod` | 运行 `dist/main` 生产产物 |
+| `npm run lint` | ESLint 检查并自动修复 TypeScript 文件 |
+| `npm run test` | 运行 Jest 单元测试 |
+| `npm run test:watch` | Jest watch 模式 |
+| `npm run test:cov` | 生成测试覆盖率 |
+| `npm run test:debug` | Node inspect 模式调试 Jest |
+| `npm run test:e2e` | 运行 e2e 测试配置 |
+| `npm run prisma:generate` | 生成 Prisma Client |
+| `npm run prisma:migrate` | 执行 Prisma 本地迁移 |
+
+常用联调启动方式：
+
 ```bash
-npm run build
-npm run start
-npm run start:dev
-npm run start:debug
-npm run start:prod
-npm run lint
-npm run test
-npm run test:watch
-npm run test:cov
-npm run test:e2e
+npm install
 npm run prisma:generate
 npm run prisma:migrate
+npm run start:dev
 ```
 
 ## 接口说明
@@ -228,6 +248,8 @@ npm run prisma:migrate
 - `PUT /auth/profile`：更新当前用户资料
 - `POST /auth/avatar`：上传头像
 - `GET /auth/login-records`：获取当前用户登录记录
+- `PUT /auth/password`：修改当前用户密码
+- `POST /auth/destroy`：注销当前账号
 
 ### 城市与用户城市
 
@@ -235,9 +257,11 @@ npm run prisma:migrate
 - `POST /cities`：匿名时新增公共城市；登录后将目标城市加入当前用户城市列表
 - `PUT /cities/:cityName`：修改城市名称
 - `DELETE /cities/:cityName`：匿名时删除公共城市；登录后仅移除当前用户城市关联
-- `GET /user/cities`：查询当前用户关注城市列表
+- `GET /user/cities`：查询当前用户关注城市列表，返回完整天气 bundle 供详情页首屏展示
 - `POST /user/cities`：添加当前用户关注城市
 - `PUT /user/cities/:cityId/default`：设置默认城市
+- `POST /user/cities/batch-delete`：批量删除当前用户城市关系，删除后统一重排默认城市
+- `DELETE /user/cities`：兼容旧版批量删除调用；正式联调建议使用 `POST /user/cities/batch-delete`
 - `DELETE /user/cities/:cityId`：删除当前用户城市
 
 ### 天气接口
@@ -245,6 +269,8 @@ npm run prisma:migrate
 - `GET /weather/current?cityId=`：获取城市当前天气
 - `GET /weather/hourly?cityId=`：获取城市小时级天气
 - `GET /weather/daily?cityId=`：获取城市多日天气
+- `GET /weather/daily-detail?cityId=`：获取逐日详细天气指标
+- `GET /weather/reverse-geocode?lat=&lng=`：按经纬度解析地图地点信息
 
 ## 认证与响应说明
 
@@ -304,11 +330,13 @@ weather-backend/
 │  │  ├─ __tests__/
 │  │  │  ├─ cities.controller.spec.ts
 │  │  │  ├─ cities.service.spec.ts
-│  │  │  └─ user-cities.service.spec.ts
+│  │  │  ├─ user-cities.service.spec.ts
+│  │  │  └─ user-cities.controller.spec.ts
 │  │  ├─ dto/
 │  │  │  ├─ create-city.dto.ts     新增城市请求体
 │  │  │  ├─ update-city.dto.ts     重命名城市请求体
-│  │  │  └─ add-user-city.dto.ts   添加用户城市请求体
+│  │  │  ├─ add-user-city.dto.ts   添加用户城市请求体
+│  │  │  └─ batch-remove-user-cities.dto.ts 批量删除用户城市请求体
 │  │  ├─ city-alias.ts             城市别名与标准名映射
 │  │  ├─ city-seed.ts              启动时写入数据库的城市初始数据
 │  │  ├─ city-resolver.service.ts  城市解析与标准化服务
@@ -326,7 +354,7 @@ weather-backend/
 │  │  ├─ weather.types.ts          WeatherCurrent、WeatherHourlyItem 等类型定义
 │  │  ├─ weather.provider.ts       对接 Open-Meteo API，负责实际网络请求与城市解析
 │  │  ├─ weather.service.ts        快照缓存逻辑：优先命中 DB，过期后重新拉取
-│  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily）
+│  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily、daily-detail、reverse-geocode）
 │  │  └─ weather.module.ts         模块声明，导出 WeatherService、WeatherProvider
 │  ├─ common/
 │  │  ├─ filters/
@@ -365,13 +393,14 @@ weather-backend/
 
 `city-alias.ts` 负责收敛常见城市别名与标准名，`CityResolverService` 在此基础上把用户输入的城市名称解析成可入库的标准城市元数据，统一服务于新增城市、修复坐标和用户城市接入流程。
 
-`UserCitiesService` 维护 `UserCity` 关联表，支持添加、删除、设置默认城市、维持默认城市优先顺序，并在删除后自动将下一个城市提升为默认。
+`UserCitiesService` 维护 `UserCity` 关联表，支持添加、删除、批量删除、设置默认城市、维持默认城市优先顺序，并在删除后自动将剩余第一项设为默认。当前用户城市列表会附带完整天气 bundle，供前端城市详情页和趋势预报首屏直接消费；批量删除响应则使用轻量城市列表，避免天气服务失败影响删除写操作。
 
 当前 `/cities` 已与用户城市能力打通：
 
 - 匿名访问 `/cities` 时返回公共城市列表
 - 登录后无 `keyword` 拉取 `/cities` 时返回当前账号自己的城市列表
 - 登录后 `POST /cities` / `DELETE /cities/:cityName` 时优先操作当前用户与城市的关联，而不是直接影响所有用户共享数据
+- 城市管理中心批量删除走 `POST /user/cities/batch-delete`，后端在一次请求内删除关系并重排默认城市；删空后返回空数组，不会恢复默认城市
 
 ### weather 模块
 
@@ -400,20 +429,23 @@ weather-backend/
 ### 城市与用户城市
 
 - **城市管理权限分层**：当前 `/cities` 已支持按登录态自动分流，后续可继续把公共城市维护（重命名、全局删除）升级为管理员权限，避免普通用户误操作全局城市数据。
-- **城市排序调整**：`UserCity` 表已有 `sortOrder` 字段，可新增 `PATCH /user/cities/order` 接口，接收城市 ID 顺序数组并批量更新 `sortOrder`。
+- **城市排序调整**：`UserCity` 表已有 `sortOrder` 字段，可新增 `PATCH /user/cities/order` 接口，接收城市 ID 顺序数组并批量更新 `sortOrder`，配合前端拖拽排序。
 - **城市搜索增强**：当前通过 `cityName LIKE` 模糊匹配，可扩展为同时匹配 `province`、`cityCode`，或接入更强的地理搜索能力。
+- **批量操作审计**：可为 `POST /user/cities/batch-delete` 增加操作日志，记录请求城市、成功项、失败项和触发用户，方便排查误删与联调问题。
 
 ### 天气数据
 
 - **多 Provider 支持**：`WeatherProvider` 当前默认以 Open-Meteo 为主，可进一步抽象为多 Provider 注入模式，支持更多天气源切换。
 - **天气预警推送**：引入 `Bull` 或 `BullMQ` 队列，定时扫描用户默认城市的天气快照，当天气码匹配恶劣天气条件时通过 WebSocket 或 Server-Sent Events 通知已连接的前端。
 - **精细缓存失效**：当前以固定分钟数过期，可改为在城市坐标变更或 provider 返回数据出错时主动失效，减少陈旧数据展示窗口。
+- **天气 bundle 缓存优化**：用户城市列表会返回详情页所需的 `current/hourly/daily/dailyDetail`，后续可对 bundle 组装增加批量缓存读取或后台预热，降低列表接口压力。
 - **历史天气**：可扩展 `WeatherSnapshot` 或新增 `WeatherHistory` 表，对外暴露按日期查询的历史天气接口。
 
 ### 性能与可靠性
 
 - **Redis 缓存层**：将天气快照的热点数据同步写入 Redis，查询时优先命中内存缓存，降低 MySQL 查询压力。接入 `@nestjs/cache-manager` + `cache-manager-ioredis` 即可。
 - **异步天气预热**：可在用户添加城市（`POST /user/cities` 或登录态 `POST /cities`）时，将城市 ID 推入队列，后台异步拉取天气并写入快照，而不是在请求路径上同步拉取。
+- **批量删除事务强化**：当前批量删除已在服务层集中处理默认城市重排，后续可进一步补充数据库级约束或审计表，保证复杂并发场景下也能追踪最终状态。
 
 ### 可观测性
 
