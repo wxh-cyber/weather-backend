@@ -189,11 +189,12 @@ export class WeatherProvider {
     );
     const forecastDays = this.configService.get<number>(
       'WEATHER_FORECAST_DAYS',
-      90,
+      16,
     );
+    // Open-Meteo free tier caps forecast_days at 16
     const normalizedForecastDays = Math.min(
-      90,
-      Math.max(1, Number(forecastDays) || 90),
+      16,
+      Math.max(1, Number(forecastDays) || 16),
     );
     url.searchParams.set('forecast_days', String(normalizedForecastDays));
     url.searchParams.set('current', 'temperature_2m,weather_code');
@@ -234,7 +235,8 @@ export class WeatherProvider {
     );
     airQualityUrl.searchParams.set(
       'forecast_days',
-      String(normalizedForecastDays),
+      // Air Quality API caps at 7 days (stricter than Forecast API's 16)
+      String(Math.min(7, normalizedForecastDays)),
     );
     airQualityUrl.searchParams.set('hourly', 'us_aqi');
 

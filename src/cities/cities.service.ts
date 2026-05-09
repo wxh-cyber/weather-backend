@@ -119,7 +119,16 @@ export class CitiesService implements OnModuleInit {
       });
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'P2002') {
-        throw new ConflictException('城市已存在，请勿重复添加');
+        // Race condition: another request created the city concurrently
+        // Retry to check if city now exists and return 409
+        const retryExisting = await this.prisma.city.findUnique({
+          where: { cityName: resolved.cityName },
+        });
+        if (retryExisting) {
+          throw new ConflictException('城市已存在，请勿重复添加');
+        }
+        // If still not found after retry, treat as database error
+        throw new InternalServerErrorException('Failed to create city');
       }
       throw new InternalServerErrorException('Failed to create city');
     }

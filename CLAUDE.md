@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Development
-npm run start:dev       # Start with hot reload (watches for changes)
+npm run start:dev       # Start with hot reload
 npm run start:prod      # Run compiled output from dist/
 
 # Build
@@ -33,6 +33,9 @@ Copy `.env.example` to `.env` and configure:
 ```
 DATABASE_URL="mysql://root:password@localhost:3306/weather_backend"
 PORT=3000
+JWT_ACCESS_SECRET=...
+JWT_REFRESH_SECRET=...
+WEATHER_CACHE_MINUTES=10
 ```
 
 Requires a running MySQL instance. The database `weather_backend` must exist before running migrations.
@@ -42,29 +45,35 @@ Requires a running MySQL instance. The database `weather_backend` must exist bef
 **Framework:** NestJS (Express platform) with Prisma ORM, MySQL database.
 
 **Module layout:**
-- `src/auth/` — User registration, login, profile management (`nickname`, `phone`, `qq`, `wechat`), avatar upload, login history (`GET /auth/login-records`)
-- `src/cities/` — City weather listing with keyword search
-- `src/prisma/` — Singleton `PrismaService` (global module, injected everywhere)
-- `src/app.module.ts` — Root module wiring: `ConfigModule` (global), `PrismaModule`, `AuthModule`, `CitiesModule`
+- `src/auth/` — Registration, login, profile management, avatar upload, login history, token refresh, password change, account deletion
+- `src/cities/` — Global city CRUD (`CitiesService`) + per-user city management (`UserCitiesService`, `UserCitiesController`)
+- `src/weather/` — Open-Meteo API integration, weather snapshot caching, reverse geocoding
+- `src/common/` — `HttpExceptionFilter` (unified error shape) and `ResponseInterceptor` (auto-wraps success responses)
+- `src/prisma/` — Singleton `PrismaService` (global module)
 
-**Authentication:** Stateless mock-token scheme — login returns `mock-token-{userId}`, subsequent requests pass it as `Authorization: Bearer mock-token-{userId}`. `AuthService.resolveUserFromAuthHeader()` decodes the userId and looks it up in DB. No JWT library is used.
+**Authentication:** JWT with rotation. Login returns `accessToken` (2h) + `refreshToken` (7d). `RefreshToken` rows track revocation via `revokedAt`. `OptionalAuthGuard` supports endpoints that work for both anonymous and authenticated users.
 
-**Password hashing:** SHA-256 via Node.js built-in `crypto.createHash`.
+**Password hashing:** SHA-256 on legacy accounts, bcrypt for new accounts. On login with a SHA-256 hash, the password is transparently upgraded to bcrypt.
 
-**Cities data:** In-memory mock data built in `CitiesService` constructor using a hardcoded list of 34 Chinese cities with randomly assigned weather. Changes (CRUD) mutate the in-memory array only — data resets on restart. Endpoints: `GET /cities?keyword=` (filter by substring), `POST /cities` (add), `PUT /cities/:cityName` (rename), `DELETE /cities/:cityName` (remove).
+**Cities data:** Persisted in MySQL. `CitiesService.onModuleInit()` seeds 34 Chinese cities with coordinates on startup and repairs any missing coordinate data. Search uses a scoring algorithm (`getCityMatchScore`) for ranked results. `CityResolverService` resolves user input to standardized city metadata; `city-alias.ts` maps common aliases to canonical names.
+
+**User cities:** `UserCitiesService` manages per-user city lists with `sortOrder`, `isDefault`, batch deletion, and automatic default reassignment. Operations use Prisma transactions. Race conditions on city creation are handled by catching P2002 and retrying.
+
+**Weather:** `WeatherProvider` calls Open-Meteo Forecast + Geocoding APIs. `WeatherService` caches responses as `WeatherSnapshot` rows; cache TTL is controlled by `WEATHER_CACHE_MINUTES`. Supports reverse geocoding at `GET /weather/reverse-geocode`.
 
 **File uploads:** Avatar images saved to `uploads/avatars/` at process CWD, served as static files at `/uploads/`. Max 2 MB, JPEG/PNG/WebP only.
 
-**CORS:** Allowed origins are `http://localhost:5173` and `http://127.0.0.1:5173` (Vite dev server default).
+**CORS:** Allowed origins are `http://localhost:5173` and `http://127.0.0.1:5173`.
 
-**Response shape:** All endpoints return `{ code: 0, message: string, data: any }` on success. HTTP status codes map NestJS exceptions on error.
+**Response shape:** All endpoints return `{ code: 0, message: string, data: any }` on success via `ResponseInterceptor`. Errors use `HttpExceptionFilter`.
 
-**Demo account:** On every startup, `AuthService.onModuleInit()` ensures `demo@weather.com` / `123456` exists.
+**Demo account:** `AuthService.onModuleInit()` ensures `demo@weather.com` / `123456` exists on every startup.
 
-**Prisma models:** `User` (userId CUID PK, email unique) and `LoginRecord` (records each login with IP/device, cascade-deletes with user).
+**Prisma models:** `User`, `LoginRecord` (cascade-deletes with user), `RefreshToken` (tracks revocation), `City` (normalizedName, searchAliases, coordinates), `UserCity` (sortOrder, isDefault; unique on userId+cityId), `WeatherSnapshot` (unique on cityId+source, has expiresAt).
 
 ## Key Patterns
 
-- DTOs live in `src/auth/dto/` and `src/cities/dto/`, using `class-validator` decorators; `ValidationPipe` is configured with `whitelist: true`, `transform: true`, and `enableImplicitConversion: true`.
+- DTOs in `src/auth/dto/` and `src/cities/dto/` use `class-validator`; `ValidationPipe` is configured with `whitelist: true`, `transform: true`, `enableImplicitConversion: true`.
 - `PrismaModule` is global — no need to import it in feature modules.
-- Error handling in services uses a private `handlePrismaError()` pattern: re-throw NestJS HTTP exceptions as-is, wrap Prisma errors as 500.
+- Services catch Prisma error codes directly (P2002 unique violation, P2025 not found) rather than using a generic wrapper.
+- Swagger docs are enabled; decorators are present on controllers.

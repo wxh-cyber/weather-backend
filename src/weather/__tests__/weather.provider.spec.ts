@@ -585,7 +585,8 @@ describe('WeatherProvider.fetchForecast', () => {
     });
 
     const forecastUrl = fetchMock.mock.calls[0]?.[0] as URL;
-    expect(forecastUrl.searchParams.get('forecast_days')).toBe('90');
+    // Values above 16 are clamped to 16 (Open-Meteo free tier limit)
+    expect(forecastUrl.searchParams.get('forecast_days')).toBe('16');
     expect(result.current).toMatchObject({
       apparentTemperature: '28°C',
       precipitationProbability: '35%',

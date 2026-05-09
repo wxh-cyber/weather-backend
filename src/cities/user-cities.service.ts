@@ -1,5 +1,4 @@
 import {
-  ConflictException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -34,7 +33,9 @@ export class UserCitiesService {
       },
     });
     if (existing) {
-      throw new ConflictException('该城市已在我的城市列表中');
+      // City already in list — idempotent: return current state so the caller
+      // can sync UI without treating this as an error.
+      return this.getUserCitiesResponse(userId, { includeWeatherBundle: true });
     }
 
     const count = await this.prisma.userCity.count({ where: { userId } });
@@ -60,7 +61,11 @@ export class UserCitiesService {
       });
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'P2002') {
-        throw new ConflictException('该城市已在我的城市列表中');
+        // Race condition: concurrent request already created this association.
+        // Goal achieved — return current list instead of surfacing a 409.
+        return this.getUserCitiesResponse(userId, {
+          includeWeatherBundle: true,
+        });
       }
       throw new InternalServerErrorException('Failed to add city to user');
     }
@@ -253,15 +258,31 @@ export class UserCitiesService {
     includeWeatherSummary = true,
     includeWeatherBundle = false,
   ) {
-    const summary = includeWeatherSummary
-      ? await this.weatherService.getCitySummary(city.cityId, {
+    let summary: Awaited<ReturnType<typeof this.weatherService.getCitySummary>> | undefined;
+    if (includeWeatherSummary) {
+      try {
+        summary = await this.weatherService.getCitySummary(city.cityId, {
           preferCache: true,
           allowFetch: true,
-        })
-      : undefined;
-    const weather = includeWeatherBundle
-      ? await this.weatherService.getCityWeatherBundle(city.cityId)
-      : undefined;
+        });
+      } catch {
+        // Single city summary failure must not kill the entire list response.
+        summary = undefined;
+      }
+    }
+    let weather: Awaited<
+      ReturnType<typeof this.weatherService.getCityWeatherBundle>
+    > | undefined;
+    if (includeWeatherBundle) {
+      try {
+        weather = await this.weatherService.getCityWeatherBundle(city.cityId);
+      } catch {
+        // Single city weather failure must not kill the entire list response.
+        // The caller (getUserCitiesResponse) uses Promise.all — one rejection
+        // would drop every city. Degrade gracefully: omit the weather field.
+        weather = undefined;
+      }
+    }
 
     return {
       cityId: city.cityId,

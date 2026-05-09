@@ -167,6 +167,9 @@ export class WeatherService {
   }
 
   private async getCityOrThrow(cityId: string) {
+    if (!cityId || !cityId.trim()) {
+      throw new NotFoundException('目标城市不存在');
+    }
     const city = await this.prisma.city.findUnique({ where: { cityId } });
     if (!city) {
       throw new NotFoundException('目标城市不存在');

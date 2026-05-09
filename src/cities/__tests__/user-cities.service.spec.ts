@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { UserCitiesService } from '../user-cities.service';
 
 const createPrismaMock = () => {
@@ -21,8 +21,16 @@ const createPrismaMock = () => {
         return operationsOrCallback({
           userCity: {
             findMany: prisma.userCity.findMany,
+            findUnique: prisma.userCity.findUnique,
+            count: prisma.userCity.count,
+            create: prisma.userCity.create,
             update: prisma.userCity.update,
+            updateMany: prisma.userCity.updateMany,
+            delete: prisma.userCity.delete,
             deleteMany: prisma.userCity.deleteMany,
+          },
+          city: {
+            findUnique: prisma.city.findUnique,
           },
         });
       }
@@ -38,7 +46,7 @@ const createWeatherServiceMock = () => ({
   getCitySummary: jest.fn(() => ({
     weatherText: '晴',
     temperature: '26°C',
-  })),
+  })) as jest.Mock,
   getCityWeatherBundle: jest.fn(() => ({
     current: {
       cityId: 'city-1',
@@ -105,7 +113,7 @@ const createWeatherServiceMock = () => ({
         },
       ],
     },
-  })),
+  })) as jest.Mock,
 });
 
 describe('UserCitiesService', () => {
@@ -221,7 +229,7 @@ describe('UserCitiesService', () => {
     );
   });
 
-  it('should reject duplicated user city', async () => {
+  it('should return current city list when adding a duplicated user city (idempotent)', async () => {
     prisma.city.findUnique.mockResolvedValue({
       cityId: 'city-1',
       cityName: '武汉市',
@@ -229,10 +237,31 @@ describe('UserCitiesService', () => {
     prisma.userCity.findUnique.mockResolvedValue({
       userCityId: 'uc-1',
     });
+    prisma.userCity.findMany.mockResolvedValue([
+      {
+        userCityId: 'uc-1',
+        userId: 'user-1',
+        cityId: 'city-1',
+        isDefault: true,
+        sortOrder: 0,
+        createdAt: new Date('2026-04-14T06:00:00Z'),
+        city: {
+          cityId: 'city-1',
+          cityName: '武汉市',
+          cityCode: '420100',
+          province: '湖北省',
+          country: '中国',
+          latitude: 30.5928,
+          longitude: 114.3055,
+        },
+      },
+    ]);
 
-    await expect(service.addUserCity('user-1', 'city-1')).rejects.toThrow(
-      ConflictException,
-    );
+    const result = await service.addUserCity('user-1', 'city-1');
+
+    expect(result.code).toBe(0);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.cityId).toBe('city-1');
   });
 
   it('should reject missing default target city', async () => {
@@ -551,5 +580,71 @@ describe('UserCitiesService', () => {
     });
     expect(weatherService.getCitySummary).not.toHaveBeenCalled();
     expect(weatherService.getCityWeatherBundle).not.toHaveBeenCalled();
+  });
+
+  it('should return city list with empty weather text when getCitySummary throws', async () => {
+    prisma.userCity.findMany.mockResolvedValue([
+      {
+        userCityId: 'uc-1',
+        userId: 'user-1',
+        cityId: 'city-1',
+        isDefault: true,
+        sortOrder: 0,
+        createdAt: new Date('2026-04-14T06:00:00Z'),
+        city: {
+          cityId: 'city-1',
+          cityName: '武汉市',
+          cityCode: '420100',
+          province: '湖北省',
+          country: '中国',
+          latitude: null,
+          longitude: null,
+        },
+      },
+    ]);
+    weatherService.getCitySummary.mockRejectedValue(
+      new Error('geocoding failed'),
+    );
+
+    const result = await service.getUserCities('user-1');
+
+    expect(result.code).toBe(0);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.cityId).toBe('city-1');
+    expect(result.data[0]?.weatherText).toBe('');
+    expect(result.data[0]?.temperature).toBe('');
+  });
+
+  it('should return city list without weather field when getCityWeatherBundle throws', async () => {
+    prisma.userCity.findMany.mockResolvedValue([
+      {
+        userCityId: 'uc-1',
+        userId: 'user-1',
+        cityId: 'city-1',
+        isDefault: true,
+        sortOrder: 0,
+        createdAt: new Date('2026-04-14T06:00:00Z'),
+        city: {
+          cityId: 'city-1',
+          cityName: '武汉市',
+          cityCode: '420100',
+          province: '湖北省',
+          country: '中国',
+          latitude: null,
+          longitude: null,
+        },
+      },
+    ]);
+    weatherService.getCityWeatherBundle.mockRejectedValue(
+      new Error('coordinates missing'),
+    );
+
+    const result = await service.getUserCities('user-1');
+
+    expect(result.code).toBe(0);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.cityId).toBe('city-1');
+    // weather field must be absent, not an error
+    expect(result.data[0]).not.toHaveProperty('weather');
   });
 });
