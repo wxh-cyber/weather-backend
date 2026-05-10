@@ -59,7 +59,8 @@
       "Bash(awk '{print $5}')",
       "Bash(xargs -I{} taskkill //PID {} //F)",
       "Bash(python -c \"import sys,json; print\\('up:', json.load\\(sys.stdin\\).get\\('code'\\)\\)\")",
-      "Bash(curl -s \"http://localhost:3000/cities?keyword=北京\")"
+      "Bash(curl -s \"http://localhost:3000/cities?keyword=北京\")",
+      "Bash(git show-ref *)"
     ],
     "additionalDirectories": [
       "D:\\Code\\毕业设计\\weather-backend\\.claude",

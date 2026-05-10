@@ -111,5 +111,3 @@ export type CityMetadata = {
   latitude: number;
   longitude: number;
 };
-
-export type { ReverseGeocodeResult } from './reverse-geocode.types';

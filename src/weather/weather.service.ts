@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -135,35 +134,6 @@ export class WeatherService {
     }
 
     return this.buildFallbackSummary(city.cityName);
-  }
-
-  async reverseGeocode(latitude: number, longitude: number) {
-    if (!this.isValidLatitude(latitude) || !this.isValidLongitude(longitude)) {
-      throw new BadRequestException('经纬度参数不合法');
-    }
-
-    const resolved = await this.weatherProvider.reverseGeocode(
-      latitude,
-      longitude,
-    );
-
-    if (!resolved) {
-      return {
-        code: 0,
-        message: '地点名称解析失败，已回退坐标',
-        data: {
-          displayName: '',
-          latitude,
-          longitude,
-        },
-      };
-    }
-
-    return {
-      code: 0,
-      message: '地点名称解析成功',
-      data: resolved,
-    };
   }
 
   private async getCityOrThrow(cityId: string) {
@@ -391,11 +361,4 @@ export class WeatherService {
     };
   }
 
-  private isValidLatitude(value: number) {
-    return Number.isFinite(value) && value >= -90 && value <= 90;
-  }
-
-  private isValidLongitude(value: number) {
-    return Number.isFinite(value) && value >= -180 && value <= 180;
-  }
 }

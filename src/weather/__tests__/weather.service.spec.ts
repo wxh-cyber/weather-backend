@@ -86,7 +86,6 @@ const createProviderMock = () => ({
     },
   ]),
   resolveCityByName: jest.fn(),
-  reverseGeocode: jest.fn(),
 });
 
 describe('WeatherService', () => {
@@ -126,49 +125,6 @@ describe('WeatherService', () => {
     await expect(service.getCurrentWeather('missing-city')).rejects.toThrow(
       NotFoundException,
     );
-  });
-
-  it('should return reverse geocode payload when provider resolves a place', async () => {
-    provider.reverseGeocode.mockResolvedValue({
-      displayName: '湖北省 · 武汉市 · 洪山区 · 光谷广场',
-      city: '武汉市',
-      province: '湖北省',
-      district: '洪山区',
-      latitude: 30.5121,
-      longitude: 114.4128,
-    });
-
-    const result = await service.reverseGeocode(30.5121, 114.4128);
-
-    expect(provider.reverseGeocode).toHaveBeenCalledWith(30.5121, 114.4128);
-    expect(result.code).toBe(0);
-    expect(result.data.displayName).toContain('武汉市');
-  });
-
-  it('should return fallback reverse geocode payload when provider resolves without gaode', async () => {
-    provider.reverseGeocode.mockResolvedValue({
-      displayName: '上海市 · 黄浦区 · 中山东一路',
-      city: '上海市',
-      province: '上海市',
-      district: '黄浦区',
-      latitude: 31.2304,
-      longitude: 121.4737,
-    });
-
-    const result = await service.reverseGeocode(31.2304, 121.4737);
-
-    expect(result.code).toBe(0);
-    expect(result.message).toBe('地点名称解析成功');
-    expect(result.data.displayName).toBe('上海市 · 黄浦区 · 中山东一路');
-  });
-
-  it('should return empty display name when reverse geocode has no match', async () => {
-    provider.reverseGeocode.mockResolvedValue(null);
-
-    const result = await service.reverseGeocode(30.5121, 114.4128);
-
-    expect(result.code).toBe(0);
-    expect(result.data.displayName).toBe('');
   });
 
   it('should build daily weather detail payload from snapshot data', async () => {
