@@ -11,7 +11,7 @@
 
 ## 项目简介
 
-`weather-backend` 是“小慕天气”系统的后端服务，基于 `NestJS + Prisma + MySQL` 构建，当前已从早期联调版演进为具备认证、用户资料、城市管理、用户城市、真实天气拉取、逆地理编码与缓存能力的毕业设计后端。项目同时提供 Swagger 文档，便于前后端联调与答辩展示。
+`weather-backend` 是“小慕天气”系统的后端服务，基于 `NestJS + Prisma + MySQL` 构建，当前已从早期联调版演进为具备认证、用户资料、城市管理、用户城市、城市坐标解析、真实天气拉取与缓存能力的毕业设计后端。项目同时提供 Swagger 文档，便于前后端联调与答辩展示。
 
 ## 技术栈
 
@@ -42,7 +42,9 @@
   - 当前天气
   - 小时级预报
   - 多日预报
+- 城市名称解析与坐标补齐，支撑天气接口按城市稳定拉取数据
 - 天气数据缓存与快照持久化
+- `no-map` 分支已移除地图逆地理编码接口，当前聚焦城市天气核心链路
 - Swagger 接口文档与统一响应包装
 
 ## 运行环境
@@ -63,8 +65,13 @@ JWT_REFRESH_SECRET="replace-with-refresh-secret"
 ACCESS_TOKEN_EXPIRES_IN="2h"
 REFRESH_TOKEN_EXPIRES_IN="7d"
 WEATHER_API_BASE_URL="https://api.open-meteo.com/v1/forecast"
+WEATHER_AIR_QUALITY_API_BASE_URL="https://air-quality-api.open-meteo.com/v1/air-quality"
+WEATHER_FORECAST_DAYS=16
+WEATHER_GEOCODING_PROVIDER="gaode"
 WEATHER_GEOCODING_BASE_URL="https://geocoding-api.open-meteo.com/v1/search"
-WEATHER_API_KEY=""
+WEATHER_GEOCODING_GAODE_BASE_URL="https://restapi.amap.com/v3/geocode/geo"
+WEATHER_GEOCODING_API_KEY=""
+WEATHER_GEOCODING_TIMEOUT_MS=2500
 WEATHER_TIMEZONE="Asia/Shanghai"
 WEATHER_CACHE_MINUTES=30
 CORS_ORIGINS="http://localhost:5173,http://127.0.0.1:5173"
@@ -80,8 +87,13 @@ UPLOAD_ROOT="uploads"
 - `ACCESS_TOKEN_EXPIRES_IN`：访问令牌有效期
 - `REFRESH_TOKEN_EXPIRES_IN`：刷新令牌有效期
 - `WEATHER_API_BASE_URL`：天气查询接口地址
-- `WEATHER_GEOCODING_BASE_URL`：地理编码接口地址
-- `WEATHER_API_KEY`：第三方天气接口密钥；当前接入 Open-Meteo 时可留空
+- `WEATHER_AIR_QUALITY_API_BASE_URL`：Open-Meteo 空气质量接口地址
+- `WEATHER_FORECAST_DAYS`：天气预报天数，当前会限制在 Open-Meteo 支持的范围内
+- `WEATHER_GEOCODING_PROVIDER`：城市解析 Provider，默认优先使用 `gaode`，失败后回退到 Open-Meteo
+- `WEATHER_GEOCODING_BASE_URL`：Open-Meteo 城市名称解析接口地址，用于按城市名补齐坐标
+- `WEATHER_GEOCODING_GAODE_BASE_URL`：高德地理编码接口地址
+- `WEATHER_GEOCODING_API_KEY`：高德地理编码接口密钥；未配置时自动跳过高德解析
+- `WEATHER_GEOCODING_TIMEOUT_MS`：高德地理编码请求超时时间，单位毫秒
 - `WEATHER_TIMEZONE`：天气查询默认时区
 - `WEATHER_CACHE_MINUTES`：天气缓存时长，单位分钟
 - `CORS_ORIGINS`：允许跨域访问的前端地址，多个地址以逗号分隔
@@ -270,7 +282,6 @@ npm run start:dev
 - `GET /weather/hourly?cityId=`：获取城市小时级天气
 - `GET /weather/daily?cityId=`：获取城市多日天气
 - `GET /weather/daily-detail?cityId=`：获取逐日详细天气指标
-- `GET /weather/reverse-geocode?lat=&lng=`：按经纬度解析地图地点信息
 
 ## 认证与响应说明
 
@@ -350,11 +361,10 @@ weather-backend/
 │  │  │  ├─ weather.controller.spec.ts
 │  │  │  ├─ weather.provider.spec.ts
 │  │  │  └─ weather.service.spec.ts
-│  │  ├─ reverse-geocode.types.ts  逆地理编码结果类型定义
 │  │  ├─ weather.types.ts          WeatherCurrent、WeatherHourlyItem 等类型定义
 │  │  ├─ weather.provider.ts       对接 Open-Meteo API，负责实际网络请求与城市解析
 │  │  ├─ weather.service.ts        快照缓存逻辑：优先命中 DB，过期后重新拉取
-│  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily、daily-detail、reverse-geocode）
+│  │  ├─ weather.controller.ts     /weather 路由（current、hourly、daily、daily-detail）
 │  │  └─ weather.module.ts         模块声明，导出 WeatherService、WeatherProvider
 │  ├─ common/
 │  │  ├─ filters/
@@ -404,7 +414,7 @@ weather-backend/
 
 ### weather 模块
 
-`WeatherProvider` 负责两件事：通过 Open-Meteo Geocoding API 解析城市坐标，以及通过 Forecast API 拉取当前天气、24 小时预报和 7 日预报，再将天气码映射为中文文本。当前模块还补充了逆地理编码类型定义与对应测试，便于支撑前端天气地图页的地点展示。
+`WeatherProvider` 负责城市解析与天气数据获取：城市坐标可优先通过高德地理编码补齐，失败后回退到 Open-Meteo Geocoding；天气数据通过 Open-Meteo Forecast API 拉取当前天气、小时预报、多日预报，并额外调用 Open-Meteo Air Quality API 补充空气质量字段，再将天气码映射为中文文本。当前 `no-map` 分支不再暴露地图逆地理编码接口，天气模块聚焦按城市查询和缓存。
 
 `WeatherService` 在每次查询前先检查 `WeatherSnapshot` 表中是否存在未过期的缓存（以 `cityId + source` 为唯一键）。若缓存可用则直接反序列化返回；若已过期或不存在则调用 Provider 重新拉取，并将结果 upsert 回数据库，过期时间由 `WEATHER_CACHE_MINUTES` 控制。
 
@@ -440,6 +450,7 @@ weather-backend/
 - **精细缓存失效**：当前以固定分钟数过期，可改为在城市坐标变更或 provider 返回数据出错时主动失效，减少陈旧数据展示窗口。
 - **天气 bundle 缓存优化**：用户城市列表会返回详情页所需的 `current/hourly/daily/dailyDetail`，后续可对 bundle 组装增加批量缓存读取或后台预热，降低列表接口压力。
 - **历史天气**：可扩展 `WeatherSnapshot` 或新增 `WeatherHistory` 表，对外暴露按日期查询的历史天气接口。
+- **地图能力可选恢复**：如后续前端重新需要地图页，可从 `main` 分支恢复逆地理编码接口、类型定义与测试，再按当前 Provider 结构重新接入坐标到地点名称的解析能力。
 
 ### 性能与可靠性
 
@@ -455,9 +466,23 @@ weather-backend/
 
 ### 工程化
 
-- **Docker 化**：编写 `Dockerfile` 和 `docker-compose.yml`，将应用与 MySQL 一并容器化，一键启动完整开发环境。
+- **部署与环境增强**：当前已提供 `Dockerfile` 和 `docker-compose.yml`，后续可补充多环境 Compose 配置、生产环境健康检查和镜像发布流程。
 - **API 版本管理**：通过 `app.setGlobalPrefix('api/v1')` 或 NestJS 内置版本控制，为未来的破坏性变更预留升级通道。
 - **E2E 测试**：利用 `@nestjs/testing` + `supertest` 搭建真实数据库测试环境，覆盖登录→切换账号→拉取用户城市列表、添加城市→查看天气等完整流程。
+
+## main 与 no-map 分支对比
+
+当前 README 以 `no-map` 分支为准。两个分支的主要差异集中在天气地图能力：
+
+| 对比项 | `main` 分支 | `no-map` 分支 |
+|------|------|------|
+| 天气地图接口 | 保留 `GET /weather/reverse-geocode?lat=&lng=`，用于按经纬度解析地图地点信息 | 已移除该接口，`/weather` 仅保留 `current`、`hourly`、`daily`、`daily-detail` |
+| 逆地理编码类型 | 保留 `src/weather/reverse-geocode.types.ts` | 已移除该类型文件 |
+| Provider 职责 | 同时覆盖天气拉取、城市解析与地图逆地理编码相关逻辑 | 聚焦天气拉取、城市名称解析、坐标补齐和空气质量字段组装 |
+| 测试覆盖 | 包含逆地理编码相关控制器、Provider、Service 测试 | 删除地图逆地理编码相关测试，保留城市天气核心链路测试 |
+| 适用场景 | 适合需要地图选点、经纬度反查地点名称的前端版本 | 适合无地图页版本，接口面更集中，便于围绕城市天气完成联调与答辩 |
+
+如果后期需要把 `main` 的地图能力合回 `no-map`，建议同步恢复控制器接口、Provider 方法、类型定义、单元测试和 README 接口说明，避免代码与文档再次出现偏差。
 
 ## 联调说明
 
