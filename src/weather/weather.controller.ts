@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { WeatherService } from './weather.service';
+import { GetTrendDto } from './dto/get-trend.dto';
 
 @Controller('weather')
 export class WeatherController {
@@ -23,5 +24,10 @@ export class WeatherController {
   @Get('daily-detail')
   getDailyWeatherDetail(@Query('cityId') cityId: string) {
     return this.weatherService.getDailyWeatherDetail(cityId);
+  }
+
+  @Get('trend')
+  getTemperatureTrend(@Query() query: GetTrendDto) {
+    return this.weatherService.getTemperatureTrend(query.cityId, query.period);
   }
 }

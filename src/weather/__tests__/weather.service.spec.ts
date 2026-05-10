@@ -13,6 +13,7 @@ const createPrismaMock = () => ({
 });
 
 const createProviderMock = () => ({
+  fetchClimateForecast: jest.fn(),
   fetchForecast: jest.fn(() => ({
     current: {
       weatherText: '晴',
@@ -451,5 +452,195 @@ describe('WeatherService', () => {
     expect(result.data.pressure).toBe('1008 hPa');
     expect(result.data.dewPoint).toBe('18°C');
     expect(result.data.airQuality).toBe('AQI 51');
+  });
+
+  it('should fall back to stale cache when external API fails and snapshot exists', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    // Expired snapshot exists
+    prisma.weatherSnapshot.findUnique.mockResolvedValue({
+      source: 'open-meteo',
+      weatherText: '多云',
+      temperature: '22°C',
+      currentJson: {
+        weatherText: '多云',
+        temperature: '22°C',
+        observedAt: '2026-04-13T06:00:00Z',
+        source: 'open-meteo',
+      },
+      hourlyJson: [],
+      dailyJson: { daily: [], hourlyDetail: [] },
+      fetchedAt: new Date('2026-04-13T06:00:00Z'),
+      expiresAt: new Date('2026-04-13T06:30:00Z'), // already expired
+    });
+    // API call fails
+    provider.fetchForecast.mockRejectedValue(new Error('network error'));
+
+    const result = await service.getCurrentWeather('city-1');
+
+    expect(result.code).toBe(0);
+    expect(result.data.weatherText).toBe('多云');
+    expect(provider.fetchForecast).toHaveBeenCalled();
+  });
+
+  it('should throw InternalServerErrorException when API fails and no cache exists', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.weatherSnapshot.findUnique.mockResolvedValue(null);
+    provider.fetchForecast.mockRejectedValue(new Error('network error'));
+
+    await expect(service.getCurrentWeather('city-1')).rejects.toThrow(
+      '天气数据获取失败，请稍后重试',
+    );
+  });
+
+  describe('getTemperatureTrend', () => {
+    const city = {
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    };
+
+    const forecastSnapshot = {
+      source: 'open-meteo',
+      weatherText: '晴',
+      temperature: '26°C',
+      currentJson: { weatherText: '晴', temperature: '26°C', observedAt: '2026-05-10T06:00:00Z', source: 'open-meteo' },
+      hourlyJson: [],
+      dailyJson: {
+        daily: Array.from({ length: 16 }, (_, i) => ({
+          date: `2026-05-${String(i + 10).padStart(2, '0')}`,
+          weatherText: '晴',
+          temperatureMax: '30°C',
+          temperatureMin: '20°C',
+        })),
+        hourlyDetail: [],
+      },
+      fetchedAt: new Date('2026-05-10T06:00:00Z'),
+      expiresAt: new Date('2099-05-10T06:30:00Z'),
+    };
+
+    it('should return flat days array for period=7', async () => {
+      prisma.city.findUnique.mockResolvedValue(city);
+      prisma.weatherSnapshot.findUnique.mockResolvedValue(forecastSnapshot);
+
+      const result = await service.getTemperatureTrend('city-1', 7);
+
+      expect(result.code).toBe(0);
+      expect(result.data.period).toBe(7);
+      expect(result.data.dataSource).toBe('forecast');
+      expect((result.data as { days: unknown[] }).days).toHaveLength(7);
+    });
+
+    it('should return flat days array for period=30 capped at available data', async () => {
+      prisma.city.findUnique.mockResolvedValue(city);
+      prisma.weatherSnapshot.findUnique.mockResolvedValue(forecastSnapshot);
+
+      const result = await service.getTemperatureTrend('city-1', 30);
+
+      expect(result.data.dataSource).toBe('forecast');
+      // Only 16 days available in the mock snapshot
+      expect((result.data as { days: unknown[] }).days).toHaveLength(16);
+    });
+
+    it('should return grouped data for period=90 using climate API', async () => {
+      prisma.city.findUnique.mockResolvedValue(city);
+      // No climate cache
+      prisma.weatherSnapshot.findUnique.mockResolvedValue(null);
+      prisma.weatherSnapshot.upsert.mockResolvedValue({});
+
+      const climateItems = Array.from({ length: 90 }, (_, i) => {
+        const d = new Date('2026-05-10');
+        d.setDate(d.getDate() + i);
+        return {
+          date: d.toISOString().slice(0, 10),
+          weatherText: '晴',
+          temperatureMax: '28°C',
+          temperatureMin: '18°C',
+        };
+      });
+      provider.fetchClimateForecast.mockResolvedValue(climateItems);
+
+      const result = await service.getTemperatureTrend('city-1', 90);
+
+      expect(result.data.dataSource).toBe('climate');
+      expect(provider.fetchClimateForecast).toHaveBeenCalled();
+      const groups = (result.data as { groups: { days: unknown[] }[] }).groups;
+      expect(groups.length).toBeGreaterThanOrEqual(8);
+      // Every group must have at least one day
+      for (const g of groups) {
+        expect(g.days.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('should fill missing days with placeholder data', async () => {
+      prisma.city.findUnique.mockResolvedValue(city);
+      prisma.weatherSnapshot.findUnique.mockResolvedValue(null);
+      prisma.weatherSnapshot.upsert.mockResolvedValue({});
+
+      // Return only a single day — all other days should be filled with placeholders
+      provider.fetchClimateForecast.mockResolvedValue([
+        { date: '2026-05-10', weatherText: '晴', temperatureMax: '28°C', temperatureMin: '18°C' },
+      ]);
+
+      const result = await service.getTemperatureTrend('city-1', 90);
+      const groups = (result.data as { groups: { days: { temperatureMax: string }[] }[] }).groups;
+      const allDays = groups.flatMap((g) => g.days);
+      const placeholders = allDays.filter((d) => d.temperatureMax === '--');
+      expect(placeholders.length).toBeGreaterThan(0);
+    });
+
+    it('should fall back to forecast data when climate API fails', async () => {
+      prisma.city.findUnique.mockResolvedValue(city);
+      // First call: climate cache lookup returns null; second call: forecast snapshot
+      prisma.weatherSnapshot.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(forecastSnapshot);
+      provider.fetchClimateForecast.mockRejectedValue(new Error('climate API down'));
+
+      const result = await service.getTemperatureTrend('city-1', 90);
+
+      expect(result.data.dataSource).toBe('forecast');
+      const groups = (result.data as { groups: unknown[] }).groups;
+      expect(groups.length).toBeGreaterThan(0);
+    });
+
+    it('should use cached climate snapshot when available', async () => {
+      prisma.city.findUnique.mockResolvedValue(city);
+      const cachedItems = Array.from({ length: 90 }, (_, i) => {
+        const d = new Date('2026-05-10');
+        d.setDate(d.getDate() + i);
+        return { date: d.toISOString().slice(0, 10), weatherText: '多云', temperatureMax: '25°C', temperatureMin: '15°C' };
+      });
+      prisma.weatherSnapshot.findUnique.mockResolvedValue({
+        source: 'open-meteo-climate',
+        dailyJson: { daily: cachedItems },
+        fetchedAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      });
+
+      const result = await service.getTemperatureTrend('city-1', 90);
+
+      expect(provider.fetchClimateForecast).not.toHaveBeenCalled();
+      expect(result.data.dataSource).toBe('climate');
+    });
   });
 });

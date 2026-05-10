@@ -15,6 +15,13 @@ import type {
   WeatherSnapshotPayload,
 } from './weather.types';
 
+type TrendPeriodGroup = {
+  label: string;
+  startDate: string;
+  endDate: string;
+  days: WeatherDailyItem[];
+};
+
 @Injectable()
 export class WeatherService {
   constructor(
@@ -349,15 +356,197 @@ export class WeatherService {
     });
   }
 
-  private buildFallbackSummary(cityName: string) {
-    const seed = Array.from(cityName).reduce(
-      (sum, char) => sum + char.charCodeAt(0),
-      0,
-    );
-    const weatherPool = ['晴', '多云', '阴', '小雨'];
+  async getTemperatureTrend(cityId: string, period: 7 | 15 | 30 | 90) {
+    const city = await this.getCityOrThrow(cityId);
+
+    if (period !== 90) {
+      const snapshot = await this.requireSnapshot(city);
+      const days = snapshot.daily.slice(0, period);
+      return {
+        code: 0,
+        message: '获取成功',
+        data: {
+          cityId: city.cityId,
+          cityName: city.cityName,
+          period,
+          dataSource: 'forecast' as const,
+          days,
+        },
+      };
+    }
+
+    // 90-day path: try Climate API, fall back to forecast
+    const resolvedCity = await this.ensureCityCoordinates(city);
+    const today = new Date();
+    const startDate = this.formatDate(today);
+    const endDate = this.formatDate(new Date(today.getTime() + 89 * 86400000));
+
+    let climateItems: WeatherDailyItem[];
+    let dataSource: 'climate' | 'forecast';
+
+    const cached = await this.getClimateSnapshot(city.cityId);
+    if (cached) {
+      climateItems = cached;
+      dataSource = 'climate';
+    } else {
+      try {
+        climateItems = await this.weatherProvider.fetchClimateForecast(
+          {
+            cityName: resolvedCity.cityName,
+            cityCode: resolvedCity.cityCode ?? undefined,
+            province: resolvedCity.province ?? undefined,
+            country: resolvedCity.country ?? undefined,
+            latitude: Number(resolvedCity.latitude),
+            longitude: Number(resolvedCity.longitude),
+          },
+          startDate,
+          endDate,
+        );
+        dataSource = 'climate';
+        await this.saveClimateSnapshot(city.cityId, climateItems);
+      } catch {
+        // Climate API unavailable — fall back to existing forecast data
+        const snapshot = await this.requireSnapshot(city);
+        climateItems = snapshot.daily;
+        dataSource = 'forecast';
+      }
+    }
+
+    const groups = this.buildTrendGroups(climateItems, today);
+
     return {
-      weatherText: weatherPool[seed % weatherPool.length] ?? '多云',
-      temperature: `${12 + (seed % 17)}°C`,
+      code: 0,
+      message: '获取成功',
+      data: {
+        cityId: city.cityId,
+        cityName: city.cityName,
+        period: 90 as const,
+        dataSource,
+        groups,
+      },
+    };
+  }
+
+  private buildTrendGroups(
+    items: WeatherDailyItem[],
+    startDay: Date,
+  ): TrendPeriodGroup[] {
+    const byDate = new Map<string, WeatherDailyItem>();
+    for (const item of items) {
+      byDate.set(item.date, item);
+    }
+
+    const groups: TrendPeriodGroup[] = [];
+    const cursor = new Date(startDay);
+    cursor.setHours(0, 0, 0, 0);
+
+    // Build ~9 decade groups covering 3 months
+    for (let month = 0; month < 3; month++) {
+      const year = cursor.getFullYear();
+      const mon = cursor.getMonth(); // 0-indexed
+      const daysInMonth = new Date(year, mon + 1, 0).getDate();
+
+      const decades: Array<{ start: number; end: number; label: string }> = [
+        { start: 1, end: 10, label: '上旬' },
+        { start: 11, end: 20, label: '中旬' },
+        { start: 21, end: daysInMonth, label: '下旬' },
+      ];
+
+      for (const decade of decades) {
+        const groupStart = new Date(year, mon, decade.start);
+        const groupEnd = new Date(year, mon, decade.end);
+
+        // Skip decades entirely before our start day
+        if (groupEnd < cursor) continue;
+
+        const effectiveStart = groupStart < cursor ? cursor : groupStart;
+        const startDateStr = this.formatDate(effectiveStart);
+        const endDateStr = this.formatDate(groupEnd);
+
+        const days: WeatherDailyItem[] = [];
+        const d = new Date(effectiveStart);
+        while (d <= groupEnd) {
+          const dateStr = this.formatDate(d);
+          days.push(
+            byDate.get(dateStr) ?? {
+              date: dateStr,
+              weatherText: '暂无数据',
+              temperatureMax: '--',
+              temperatureMin: '--',
+            },
+          );
+          d.setDate(d.getDate() + 1);
+        }
+
+        const chineseMonth = mon + 1;
+        groups.push({
+          label: `${chineseMonth}月${decade.label}`,
+          startDate: startDateStr,
+          endDate: endDateStr,
+          days,
+        });
+      }
+
+      // Advance cursor to first day of next month
+      cursor.setFullYear(year, mon + 1, 1);
+    }
+
+    return groups;
+  }
+
+  private formatDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  private async getClimateSnapshot(
+    cityId: string,
+  ): Promise<WeatherDailyItem[] | null> {
+    const record = await this.prisma.weatherSnapshot.findUnique({
+      where: { cityId_source: { cityId, source: 'open-meteo-climate' } },
+    });
+    if (!record || record.expiresAt.getTime() <= Date.now()) return null;
+    const payload = record.dailyJson as { daily: WeatherDailyItem[] };
+    return Array.isArray(payload) ? payload : payload.daily;
+  }
+
+  private async saveClimateSnapshot(
+    cityId: string,
+    items: WeatherDailyItem[],
+  ): Promise<void> {
+    const trendCacheHours = Number(
+      process.env.WEATHER_TREND_CACHE_HOURS ?? '24',
+    );
+    const expiresAt = new Date(
+      Date.now() + trendCacheHours * 3600 * 1000,
+    );
+    await this.prisma.weatherSnapshot.upsert({
+      where: { cityId_source: { cityId, source: 'open-meteo-climate' } },
+      update: {
+        dailyJson: { daily: items },
+        fetchedAt: new Date(),
+        expiresAt,
+      },
+      create: {
+        cityId,
+        source: 'open-meteo-climate',
+        weatherText: '',
+        temperature: '',
+        currentJson: {},
+        hourlyJson: [],
+        dailyJson: { daily: items },
+        fetchedAt: new Date(),
+        expiresAt,
+      },
+    });
+  }
+
+  private buildFallbackSummary(_cityName: string) {
+    return {
+      weatherText: '',
+      temperature: '',
     };
   }
 

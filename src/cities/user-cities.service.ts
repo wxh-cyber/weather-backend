@@ -202,13 +202,14 @@ export class UserCitiesService {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
 
+    const hasDefault = remaining.some((item) => item.isDefault);
     await Promise.all(
       remaining.map((item, index) =>
         prisma.userCity.update({
           where: { userCityId: item.userCityId },
           data: {
             sortOrder: index,
-            isDefault: index === 0,
+            ...(hasDefault || index !== 0 ? {} : { isDefault: true }),
           },
         }),
       ),

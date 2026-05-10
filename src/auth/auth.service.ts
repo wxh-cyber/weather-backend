@@ -34,10 +34,6 @@ export class AuthService implements OnModuleInit {
       password: '123456',
       nickname: '演示账号',
     },
-    {
-      email: '1097071510@qq.com',
-      password: '123456',
-    },
   ];
 
   constructor(
@@ -305,13 +301,11 @@ export class AuthService implements OnModuleInit {
 
   async destroyAccount(userId: string, dto: DestroyAccountDto) {
     try {
-      if (dto.refreshToken?.trim()) {
-        const payload = this.authTokenService.verifyRefreshToken(
-          dto.refreshToken,
-        );
-        if (payload.sub !== userId) {
-          throw new UnauthorizedException('刷新令牌不属于当前用户');
-        }
+      const payload = this.authTokenService.verifyRefreshToken(
+        dto.refreshToken,
+      );
+      if (payload.sub !== userId) {
+        throw new UnauthorizedException('刷新令牌不属于当前用户');
       }
 
       await this.prisma.user.delete({

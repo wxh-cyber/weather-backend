@@ -9,6 +9,15 @@ import type {
   WeatherSnapshotPayload,
 } from './weather.types';
 
+type OpenMeteoClimateResponse = {
+  daily?: {
+    time: string[];
+    temperature_2m_max: number[];
+    temperature_2m_min: number[];
+    weather_code: number[];
+  };
+};
+
 type OpenMeteoForecastResponse = {
   current?: {
     time: string;
@@ -203,7 +212,7 @@ export class WeatherProvider {
     const fetchedAt = new Date().toISOString();
     const expiresAt = new Date(
       Date.now() +
-        this.configService.get<number>('WEATHER_CACHE_MINUTES', 30) * 60 * 1000,
+        this.configService.get<number>('WEATHER_CACHE_MINUTES', 10) * 60 * 1000,
     ).toISOString();
 
     const fullHourly: WeatherHourlyItem[] = hourlyPayload.time.map(
@@ -967,15 +976,6 @@ export class WeatherProvider {
     return normalized;
   }
 
-  private cleanNominatimText(value?: string) {
-    const normalized = value?.trim();
-    if (!normalized) {
-      return undefined;
-    }
-
-    return normalized;
-  }
-
   private normalizeComparableName(value?: string) {
     return value
       ?.trim()
@@ -1000,18 +1000,48 @@ export class WeatherProvider {
     };
   }
 
-  private joinStreetNumber(street?: string, number?: string) {
-    const streetText = this.cleanGaodeText(street);
-    const numberText = this.cleanGaodeText(number);
-    if (!streetText) {
-      return undefined;
+  async fetchClimateForecast(
+    city: CityMetadata,
+    startDate: string,
+    endDate: string,
+  ): Promise<WeatherDailyItem[]> {
+    const climateApiBaseUrl = this.configService.get<string>(
+      'WEATHER_CLIMATE_API_BASE_URL',
+      'https://climate-api.open-meteo.com/v1/climate',
+    );
+
+    const url = new URL(climateApiBaseUrl);
+    url.searchParams.set('latitude', String(city.latitude));
+    url.searchParams.set('longitude', String(city.longitude));
+    url.searchParams.set('start_date', startDate);
+    url.searchParams.set('end_date', endDate);
+    url.searchParams.set(
+      'daily',
+      'temperature_2m_max,temperature_2m_min,weather_code',
+    );
+    url.searchParams.set(
+      'timezone',
+      this.configService.get<string>('WEATHER_TIMEZONE', 'Asia/Shanghai'),
+    );
+    url.searchParams.set('models', 'EC_Earth3P_HR');
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new InternalServerErrorException('气候预测服务暂不可用');
     }
 
-    return `${streetText}${numberText ?? ''}`;
-  }
+    const payload = (await response.json()) as OpenMeteoClimateResponse;
+    if (!payload.daily) {
+      throw new InternalServerErrorException('气候预测服务返回的数据不完整');
+    }
 
-  private buildDisplayName(segments: Array<string | undefined>) {
-    return [...new Set(segments.filter(Boolean))].join(' · ');
+    const { daily } = payload;
+    return daily.time.map((date, index) => ({
+      date,
+      weatherText: this.mapWeatherCode(daily.weather_code[index] ?? 0),
+      temperatureMax: `${Math.round(daily.temperature_2m_max[index] ?? 0)}°C`,
+      temperatureMin: `${Math.round(daily.temperature_2m_min[index] ?? 0)}°C`,
+    }));
   }
 
   private mapWeatherCode(code: number): string {
@@ -1019,7 +1049,12 @@ export class WeatherProvider {
     if ([1, 2, 3].includes(code)) return '多云';
     if ([45, 48].includes(code)) return '雾';
     if ([51, 53, 55, 56, 57].includes(code)) return '毛毛雨';
-    if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return '小雨';
+    if (code === 61) return '小雨';
+    if (code === 63) return '中雨';
+    if (code === 65 || code === 66 || code === 67) return '大雨';
+    if (code === 80) return '小阵雨';
+    if (code === 81) return '中阵雨';
+    if (code === 82) return '大阵雨';
     if ([71, 73, 75, 77, 85, 86].includes(code)) return '小雪';
     if ([95, 96, 99].includes(code)) return '雷阵雨';
     return '阴';

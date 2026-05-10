@@ -466,9 +466,12 @@ describe('AuthService', () => {
   });
 
   it('should destroy account by deleting current user', async () => {
+    authTokenService.verifyRefreshToken.mockReturnValue({ sub: 'user-1' });
     prisma.user.delete.mockResolvedValue({});
 
-    const result = await service.destroyAccount('user-1', {});
+    const result = await service.destroyAccount('user-1', {
+      refreshToken: 'valid-refresh-token',
+    });
 
     expect(result.code).toBe(0);
     expect(result.message).toBe('账号已注销');
@@ -549,22 +552,17 @@ describe('AuthService', () => {
     });
   });
 
-  it('should reset configured dev login account to the expected bcrypt password when hash drifts', async () => {
-    prisma.user.findUnique
-      .mockResolvedValueOnce({
-        userId: 'demo-user',
-        passwordHash: await hash('123456', 10),
-      })
-      .mockResolvedValueOnce({
-        userId: 'dev-user',
-        passwordHash: await hash('not-123456', 10),
-      });
+  it('should reset demo account to the expected bcrypt password when hash drifts', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({
+      userId: 'demo-user',
+      passwordHash: await hash('not-123456', 10),
+    });
     prisma.user.update.mockResolvedValue({});
 
     await service.onModuleInit();
 
     expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { userId: 'dev-user' },
+      where: { userId: 'demo-user' },
       data: { passwordHash: expect.stringMatching(/^\$2[aby]\$/) },
     });
   });

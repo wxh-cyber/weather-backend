@@ -541,4 +541,88 @@ describe('CitiesService', () => {
     expect(prisma.city.delete).toHaveBeenCalled();
     expect(result.code).toBe(0);
   });
+
+  it('should return all cities when no keyword is provided', async () => {
+    prisma.city.findMany.mockResolvedValue([
+      {
+        cityId: 'city-bj',
+        cityName: '北京市',
+        normalizedName: '北京',
+        searchAliases: '北京|北京市',
+        cityCode: '110000',
+        province: '北京市',
+        country: '中国',
+        latitude: 39.9042,
+        longitude: 116.4074,
+      },
+      {
+        cityId: 'city-sh',
+        cityName: '上海市',
+        normalizedName: '上海',
+        searchAliases: '上海|上海市',
+        cityCode: '310000',
+        province: '上海市',
+        country: '中国',
+        latitude: 31.2304,
+        longitude: 121.4737,
+      },
+    ]);
+
+    const result = await service.getCities();
+
+    expect(result.code).toBe(0);
+    expect(result.data).toHaveLength(2);
+    expect(prisma.city.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: undefined }),
+    );
+  });
+
+  it('should handle P2002 race condition in ensureCityExists and return existing city', async () => {
+    prisma.city.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        cityId: 'city-wh',
+        cityName: '武汉市',
+        normalizedName: '武汉',
+        searchAliases: '武汉|武汉市',
+        cityCode: '420100',
+        province: '湖北省',
+        country: '中国',
+        latitude: 30.5928,
+        longitude: 114.3055,
+      });
+
+    const p2002Error = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+    });
+    prisma.city.create.mockRejectedValue(p2002Error);
+
+    const result = await service.ensureCityExists('武汉市');
+
+    expect(result.cityName).toBe('武汉市');
+    expect(prisma.city.findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('should handle P2002 race condition in createCity and return 409', async () => {
+    prisma.city.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        cityId: 'city-wh',
+        cityName: '武汉市',
+        normalizedName: '武汉',
+        searchAliases: '武汉|武汉市',
+        cityCode: '420100',
+        province: '湖北省',
+        country: '中国',
+        latitude: 30.5928,
+        longitude: 114.3055,
+      });
+
+    const p2002Error = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+    });
+    prisma.city.create.mockRejectedValue(p2002Error);
+
+    await expect(service.createCity('武汉市')).rejects.toThrow('城市已存在');
+  });
 });

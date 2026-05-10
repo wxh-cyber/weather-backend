@@ -647,4 +647,122 @@ describe('UserCitiesService', () => {
     // weather field must be absent, not an error
     expect(result.data[0]).not.toHaveProperty('weather');
   });
+
+  it('should handle P2002 race condition in addUserCity and return current list idempotently', async () => {
+    prisma.city.findUnique.mockResolvedValue({
+      cityId: 'city-1',
+      cityName: '武汉市',
+      cityCode: '420100',
+      province: '湖北省',
+      country: '中国',
+      latitude: 30.5928,
+      longitude: 114.3055,
+    });
+    prisma.userCity.findUnique.mockResolvedValue(null);
+    prisma.userCity.count.mockResolvedValue(1);
+
+    const p2002Error = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+    });
+    prisma.$transaction.mockRejectedValue(p2002Error);
+
+    prisma.userCity.findMany.mockResolvedValue([
+      {
+        userCityId: 'uc-1',
+        userId: 'user-1',
+        cityId: 'city-1',
+        sortOrder: 0,
+        isDefault: true,
+        createdAt: new Date(),
+        city: {
+          cityId: 'city-1',
+          cityName: '武汉市',
+          cityCode: '420100',
+          province: '湖北省',
+          country: '中国',
+          latitude: 30.5928,
+          longitude: 114.3055,
+        },
+      },
+    ]);
+
+    const result = await service.addUserCity('user-1', 'city-1');
+
+    expect(result.code).toBe(0);
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]?.cityId).toBe('city-1');
+  });
+
+  it('should set default city successfully and return updated list', async () => {
+    prisma.userCity.findUnique.mockResolvedValue({
+      userCityId: 'uc-2',
+      userId: 'user-1',
+      cityId: 'city-2',
+      sortOrder: 1,
+      isDefault: false,
+      createdAt: new Date(),
+    });
+    prisma.$transaction.mockResolvedValue([{}, {}]);
+    prisma.userCity.findMany.mockResolvedValue([
+      {
+        userCityId: 'uc-1',
+        userId: 'user-1',
+        cityId: 'city-1',
+        sortOrder: 0,
+        isDefault: false,
+        createdAt: new Date(),
+        city: {
+          cityId: 'city-1',
+          cityName: '北京市',
+          cityCode: '110000',
+          province: '北京市',
+          country: '中国',
+          latitude: 39.9042,
+          longitude: 116.4074,
+        },
+      },
+      {
+        userCityId: 'uc-2',
+        userId: 'user-1',
+        cityId: 'city-2',
+        sortOrder: 1,
+        isDefault: true,
+        createdAt: new Date(),
+        city: {
+          cityId: 'city-2',
+          cityName: '武汉市',
+          cityCode: '420100',
+          province: '湖北省',
+          country: '中国',
+          latitude: 30.5928,
+          longitude: 114.3055,
+        },
+      },
+    ]);
+
+    const result = await service.setDefaultCity('user-1', 'city-2');
+
+    expect(result.code).toBe(0);
+    expect(result.data).toHaveLength(2);
+  });
+
+  it('should convert P2025 to NotFoundException in removeUserCity', async () => {
+    prisma.userCity.findUnique.mockResolvedValue({
+      userCityId: 'uc-1',
+      userId: 'user-1',
+      cityId: 'city-1',
+      sortOrder: 0,
+      isDefault: true,
+      createdAt: new Date(),
+    });
+
+    const p2025Error = Object.assign(new Error('Record not found'), {
+      code: 'P2025',
+    });
+    prisma.$transaction.mockRejectedValue(p2025Error);
+
+    await expect(service.removeUserCity('user-1', 'city-1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
 });
